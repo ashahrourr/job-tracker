@@ -1,0 +1,22 @@
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore Python environment
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignore VS Code settings
+.vscode/
+
+# Ignore dependencies
+node_modules/
+package-lock.json
+yarn.lock
+
+# Ignore sensitive credentials
+backend/credentials.json
+backend/token.json
+.env
