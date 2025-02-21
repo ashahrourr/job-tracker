@@ -2,8 +2,14 @@ from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 from database import SessionLocal, JobApplication
 from fastapi.middleware.cors import CORSMiddleware
+from auth import router as auth_router
+from gmail import router as gmail_router
 
 app = FastAPI()
+
+# Include the auth routes
+app.include_router(auth_router)
+app.include_router(gmail_router)
 
 app.add_middleware(
     CORSMiddleware,
