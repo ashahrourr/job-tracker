@@ -1,0 +1,37 @@
+2025-02-22 18:32:45,957 - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-02-22 18:33:26,682 - INFO - ✅ Found 156 valid applications
+2025-02-22 18:33:26,682 - INFO - Results saved to job_companies.json
+2025-02-22 18:34:40,754 - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-02-22 18:34:41,693 - INFO - ✅ Found 3 valid applications
+2025-02-22 18:34:41,693 - INFO - Results saved to job_companies.json
+2025-02-22 18:40:52,476 - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-02-22 18:40:52,904 - INFO - ✅ Found 0 valid applications
+2025-02-22 18:40:52,905 - INFO - Results saved to job_companies.json
+2025-02-22 18:41:02,703 - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-02-22 18:41:03,056 - INFO - ✅ Found 0 valid applications
+2025-02-22 18:41:03,056 - INFO - Results saved to job_companies.json
+2025-02-22 18:41:33,187 - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-02-22 18:41:34,630 - INFO - ✅ Found 3 valid applications
+2025-02-22 18:41:34,630 - INFO - Results saved to job_companies.json
+2025-02-22 18:44:53,156 - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-02-22 18:44:54,677 - INFO - ✅ Found 3 valid applications
+2025-02-22 18:44:54,677 - INFO - Results saved to job_companies.json
+2025-02-22 18:45:16,638 - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-02-22 18:45:17,691 - INFO - ✅ Found 1 valid applications
+2025-02-22 18:45:17,691 - INFO - Results saved to job_companies.json
+2025-02-22 18:45:56,478 - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-02-22 18:45:57,533 - INFO - ✅ Found 3 valid applications
+2025-02-22 18:45:57,534 - INFO - Results saved to job_companies.json
+2025-02-22 18:52:24,298 - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-02-22 18:52:25,435 - INFO - ✅ Found 3 valid applications
+2025-02-22 18:52:25,436 - INFO - Results saved to job_companies.json
+2025-02-22 19:05:39,963 - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-02-22 19:05:39,966 - DEBUG - URL being requested: GET https://gmail.googleapis.com/gmail/v1/users/me/messages?q=%28subject%3A%7B%22thank+you+for+applying%22+OR+%22application+received%22+OR+%22confirmation+of+application%22+OR+%22application+under+review%22+OR+%22acknowledge+receipt%22+OR+%22application+submitted%22%7D+OR+body%3A%7B%22thank+you+for+applying%22+OR+%22received+your+application%22+OR+%22application+under+review%22+OR+%22submitted+your+application%22%7D%29+after%3A2025%2F02%2F21+-subject%3A%7B%22unfortunately%22+OR+%22regret%22+OR+%22rejection%22%7D&maxResults=1000&alt=json
+2025-02-22 19:05:39,966 - DEBUG - Making request: POST https://oauth2.googleapis.com/token
+2025-02-22 19:05:40,409 - DEBUG - URL being requested: GET https://gmail.googleapis.com/gmail/v1/users/me/messages/195300c6953cafaa?format=full&alt=json
+2025-02-22 19:05:40,566 - DEBUG - URL being requested: GET https://gmail.googleapis.com/gmail/v1/users/me/messages/1952a2d3ca187e76?format=full&alt=json
+2025-02-22 19:05:40,708 - DEBUG - URL being requested: GET https://gmail.googleapis.com/gmail/v1/users/me/messages/1952a1eb21398232?format=full&alt=json
+2025-02-22 19:05:40,845 - DEBUG - URL being requested: GET https://gmail.googleapis.com/gmail/v1/users/me/messages/1952a1d0da254e27?format=full&alt=json
+2025-02-22 19:05:40,999 - DEBUG - URL being requested: GET https://gmail.googleapis.com/gmail/v1/users/me/messages/1952a08184e947c8?format=full&alt=json
+2025-02-22 19:05:41,147 - INFO - ✅ Found 0 valid applications
+2025-02-22 19:05:41,147 - INFO - Results saved to job_companies.json
