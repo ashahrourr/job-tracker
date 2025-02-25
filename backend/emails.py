@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from fastapi import APIRouter, HTTPException
+import datetime
 
 router = APIRouter()
 
@@ -141,25 +142,45 @@ def classify_job_email(subject, body):
         return "confirmation"
 
 
-def fetch_and_classify_emails(service, max_results=10):
+
+def fetch_and_classify_emails(service):
     """
-    Fetch up to max_results messages from the last 30 days that appear to be job-related 
-    (based on subject search). Then classify them into confirmations or rejections.
+    Fetch ALL messages from 'today' that appear to be job-related (based on the subject).
+    Then classify them into confirmations or rejections using existing logic.
     """
     confirmations = []
     rejections = []
 
-    # Query to limit to job-related subjects in the last 30 days
+    # 1. Build the query (only for "today")
+    today = datetime.datetime.utcnow().date()
     query = (
         'subject:("thank you for applying" OR "application received" OR "your application" '
         'OR "job application" OR "your application was sent to" OR "indeed application" '
-        'OR "you have applied to" OR "thanks for applying") newer_than:30d'
+        'OR "you have applied to" OR "thanks for applying") '
+        f'after:{today.strftime("%Y/%m/%d")} '
+        f'before:{(today + datetime.timedelta(days=1)).strftime("%Y/%m/%d")}'
     )
 
-    results = service.users().messages().list(userId="me", q=query, maxResults=max_results).execute()
-    messages = results.get("messages", [])
+    # 2. Get ALL messages (pagination)
+    all_messages = []
+    next_page_token = None
 
-    for msg in messages:
+    while True:
+        response = service.users().messages().list(
+            userId="me",
+            q=query,
+            pageToken=next_page_token
+        ).execute()
+
+        messages = response.get("messages", [])
+        all_messages.extend(messages)
+
+        next_page_token = response.get("nextPageToken")
+        if not next_page_token:
+            break  # No more pages
+
+    # 3. For each message, get details & classify
+    for msg in all_messages:
         msg_data = service.users().messages().get(userId="me", id=msg["id"]).execute()
         payload = msg_data.get("payload", {})
         headers = payload.get("headers", [])
@@ -171,14 +192,12 @@ def fetch_and_classify_emails(service, max_results=10):
         if "parts" in payload:
             body = extract_body_from_parts(payload["parts"])
         else:
-            # Single-part fallback
             data = payload.get("body", {}).get("data", "")
             if data:
                 raw_decoded = base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
                 body = clean_html_content(raw_decoded)
             else:
-                # If there's truly nothing, fallback to snippet
-                # (and also attempt cleaning it in case snippet has partial HTML)
+                # Fallback to snippet
                 body = clean_html_content(snippet)
 
         # Classify
@@ -188,7 +207,7 @@ def fetch_and_classify_emails(service, max_results=10):
                 "id": msg["id"],
                 "subject": subject,
                 "snippet": snippet,
-                "body": body[:200],  # store up to 500 chars
+                "body": body[:200],  # store up to 200 chars
             })
         elif classification == "rejection":
             rejections.append({
@@ -221,7 +240,7 @@ def save_confirmations_to_json(confirmations, filename="job_confirmations.json")
 
 if __name__ == "__main__":
     service = get_gmail_service()
-    confirmations, rejections = fetch_and_classify_emails(service, max_results=10)
+    confirmations, rejections = fetch_and_classify_emails(service)
 
     # --- Print results to console ---
     num_confirmations = len(confirmations)

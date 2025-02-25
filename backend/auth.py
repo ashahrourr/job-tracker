@@ -13,7 +13,8 @@ CLIENT_SECRETS_FILE = "credentials.json"
 flow = Flow.from_client_secrets_file(
     CLIENT_SECRETS_FILE,
     scopes=["https://www.googleapis.com/auth/gmail.readonly"],
-    redirect_uri="http://localhost:8000/auth/callback"
+    REDIRECT_URI=os.getenv("REDIRECT_URI")
+
 )
 
 router = APIRouter()
