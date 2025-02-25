@@ -13,7 +13,7 @@ CLIENT_SECRETS_FILE = "credentials.json"
 flow = Flow.from_client_secrets_file(
     CLIENT_SECRETS_FILE,
     scopes=["https://www.googleapis.com/auth/gmail.readonly"],
-    REDIRECT_URI=os.getenv("REDIRECT_URI")
+    redirect_uri=os.getenv("REDIRECT_URI")
 
 )
 

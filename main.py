@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.auth import router as auth_router
 from backend.emails import router as gmail_router, get_gmail_service, fetch_and_classify_emails
 import spacy
+from backend.logic import insert_job_applications 
 
 app = FastAPI()
 
@@ -42,11 +43,13 @@ def get_jobs(db: Session = Depends(get_db)):
 # Manual email processing endpoint
 @app.post("/jobs/process")
 def process_emails(db: Session = Depends(get_db)):
+    # 1. Get Gmail service
     try:
         service = get_gmail_service()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to initialize Gmail service: {str(e)}")
     
+    # 2. Fetch and classify
     try:
         confirmations, rejections = fetch_and_classify_emails(service)
     except Exception as e:
@@ -55,44 +58,19 @@ def process_emails(db: Session = Depends(get_db)):
     if not confirmations:
         return {"message": "No confirmation emails found."}
     
+    # 3. Insert into DB (moved the spacy logic into backend/logic.py)
     try:
-        nlp = spacy.load("job_extractor_model")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to load spaCy model: {str(e)}")
-    
-    processed_count = 0
-    skipped_count = 0
+        processed_count, skipped_count = insert_job_applications(db, confirmations)
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-    for email in confirmations:
-        text = email.get("body", "")
-        doc = nlp(text)
-        company = None
-        job_title = None
-        
-        for ent in doc.ents:
-            if ent.label_ == "COMPANY" and not company:
-                company = ent.text
-            elif ent.label_ == "POSITION" and not job_title:
-                job_title = ent.text
-        
-        if company and job_title:
-            new_job = JobApplication(company=company, job_title=job_title)
-            db.add(new_job)
-            processed_count += 1
-        else:
-            skipped_count += 1
-
-    db.commit()
     return {
-        "message": (
-            f"Processed {processed_count} emails and inserted into the database. "
-            f"Skipped {skipped_count} emails due to missing entities."
-        )
+        "message": f"Processed {processed_count} emails. Skipped {skipped_count}."
     }
 
 # ✅ Step 4: Start the Scheduler on FastAPI Startup
 @app.on_event("startup")
 def on_startup():
-    from scheduler import start_scheduler
+    from backend.scheduler import start_scheduler
     start_scheduler()
     print("✅ Scheduler started...")

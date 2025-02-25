@@ -1,23 +1,16 @@
-# scheduler.py
+# backend/scheduler.py
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import logging
-from database import SessionLocal
-from emails import get_gmail_service, fetch_and_classify_emails
-from main import process_emails_logic
+from backend.database import SessionLocal
+from backend.emails import get_gmail_service, fetch_and_classify_emails
+from backend.logic import insert_job_applications  # <-- import the new function
 
-# Set up logging
 logger = logging.getLogger(__name__)
-
-# Initialize the background scheduler
 scheduler = BackgroundScheduler()
 
 def schedule_daily_fetch():
-    """
-    Schedules the daily email fetch job to run at 23:59 (11:59 PM).
-    """
-    trigger = CronTrigger(hour=23, minute=59)  # Runs at 11:59 PM daily
-
+    trigger = CronTrigger(hour=23, minute=59)
     scheduler.add_job(
         func=daily_email_fetch_job, 
         trigger=trigger,
@@ -26,24 +19,16 @@ def schedule_daily_fetch():
     )
 
 def daily_email_fetch_job():
-    """
-    Fetches and processes today's job confirmation emails at the end of the day.
-    """
     db = SessionLocal()
     try:
         logger.info("🔄 Running daily email fetch job...")
 
-        # 1. Initialize Gmail service
         service = get_gmail_service()
-
-        # 2. Fetch all job confirmation emails from today
         confirmations, _ = fetch_and_classify_emails(service)
 
-        # 3. Process and insert into DB
         if confirmations:
-            process_emails_logic(db, confirmations)
-            db.commit()
-            logger.info(f"✅ Processed {len(confirmations)} job confirmations.")
+            processed_count, skipped_count = insert_job_applications(db, confirmations)
+            logger.info(f"✅ Processed {processed_count} confirmations. Skipped {skipped_count}.")
         else:
             logger.info("ℹ️ No confirmation emails found today.")
 
@@ -53,9 +38,6 @@ def daily_email_fetch_job():
         db.close()
 
 def start_scheduler():
-    """
-    Starts the APScheduler background scheduler.
-    """
     scheduler.start()
     schedule_daily_fetch()
     logger.info("✅ Scheduler started and job scheduled.")
