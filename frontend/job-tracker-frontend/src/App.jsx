@@ -8,7 +8,7 @@ function App() {
   // Fetch jobs from the FastAPI backend
   useEffect(() => {
     axios
-      .get("http://127.0.0.1:8000/jobs/")
+      .get(`${process.env.REACT_APP_BACKEND_URL}/jobs/`)
       .then((response) => setJobs(response.data))
       .catch((error) => console.error("Error fetching jobs:", error));
   }, []);
@@ -24,8 +24,8 @@ function App() {
           <ul className="jobs-list">
             {jobs.map((job) => (
               <li key={job.id} className="job-card">
-                <span className="job-company">{job.company}</span>{" "}
-                - <span className="job-title">{job.job_title}</span>
+                <span className="job-company">{job.company}</span> -{" "}
+                <span className="job-title">{job.job_title}</span>
               </li>
             ))}
           </ul>
