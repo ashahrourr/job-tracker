@@ -1,9 +1,9 @@
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
-from database import SessionLocal, JobApplication
+from backend.database import SessionLocal, JobApplication
 from fastapi.middleware.cors import CORSMiddleware
-from auth import router as auth_router
-from emails import router as gmail_router, get_gmail_service, fetch_and_classify_emails
+from backend.auth import router as auth_router
+from backend.emails import router as gmail_router, get_gmail_service, fetch_and_classify_emails
 import spacy
 
 app = FastAPI()
