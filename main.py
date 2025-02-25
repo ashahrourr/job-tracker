@@ -15,7 +15,7 @@ app.include_router(gmail_router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Allow your frontend
+    allow_origins=["https://job-tracker-frontend-045g.onrender.com"],  # Allow your frontend
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
