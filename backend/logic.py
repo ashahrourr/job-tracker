@@ -1,6 +1,7 @@
 # backend/logic.py
 import spacy
 from backend.database import JobApplication
+import os
 
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "job_extractor_model") 
 
