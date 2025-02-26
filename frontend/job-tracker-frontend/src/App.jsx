@@ -7,10 +7,9 @@ function App() {
 
   // Fetch jobs from the FastAPI backend
   useEffect(() => {
-    console.log("Backend URL:", process.env.REACT_APP_BACKEND_URL); // Debugging log
-    
+    const API_URL = import.meta.env.VITE_BACKEND_URL;
     axios
-      .get(`${process.env.REACT_APP_BACKEND_URL}/jobs/`)
+      .get(`${API_URL}/jobs/`)
       .then((response) => setJobs(response.data))
       .catch((error) => console.error("Error fetching jobs:", error));
   }, []);
