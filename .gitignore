@@ -17,6 +17,4 @@ package-lock.json
 yarn.lock
 
 # Ignore sensitive credentials
-backend/credentials.json
-backend/token.json
 .env

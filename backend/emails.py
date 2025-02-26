@@ -117,7 +117,7 @@ def classify_job_email(subject, body):
         "at this time we will not", "however, after reviewing", "difficult decision",
         "we received a large number of applications",
         # LinkedIn-specific marker for rejections:
-        "email_jobs_application_rejected_"
+        "email_jobs_application_rejected_", "after carful review"
     ]
 
     subj_lower = subject.lower()
