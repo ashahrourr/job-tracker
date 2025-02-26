@@ -2,13 +2,16 @@
 import spacy
 from backend.database import JobApplication
 
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "job_extractor_model") 
+
 def insert_job_applications(db, confirmations):
     """
     Load spaCy, parse each email for company/position,
     insert into DB, return (processed_count, skipped_count).
     """
+
     try:
-        nlp = spacy.load("job_extractor_model")
+        nlp = spacy.load(MODEL_PATH)
     except Exception as e:
         raise RuntimeError(f"Failed to load spaCy model: {str(e)}")
     
