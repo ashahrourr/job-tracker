@@ -7,6 +7,8 @@ function App() {
 
   // Fetch jobs from the FastAPI backend
   useEffect(() => {
+    console.log("Backend URL:", process.env.REACT_APP_BACKEND_URL); // Debugging log
+    
     axios
       .get(`${process.env.REACT_APP_BACKEND_URL}/jobs/`)
       .then((response) => setJobs(response.data))
