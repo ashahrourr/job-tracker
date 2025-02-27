@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
 
 def schedule_daily_fetch():
-    trigger = CronTrigger(hour=23, minute=59)
+    trigger = CronTrigger(hour=20, minute=22)
     scheduler.add_job(
         func=daily_email_fetch_job, 
         trigger=trigger,
