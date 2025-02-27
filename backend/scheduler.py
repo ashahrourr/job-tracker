@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
 
 def schedule_daily_fetch():
+    print("inside daily fetch")
     trigger = IntervalTrigger(seconds=120) 
     scheduler.add_job(
         func=daily_email_fetch_job, 
@@ -22,6 +23,7 @@ def schedule_daily_fetch():
     )
 
 def daily_email_fetch_job():
+    print("daily email fetch job called")
     db = SessionLocal()
     try:
         current_time = datetime.now(pytz.utc)
@@ -43,6 +45,7 @@ def daily_email_fetch_job():
         db.close()
 
 def start_scheduler():
+    print("inside stat scheduler")
     scheduler.start()
     schedule_daily_fetch()
-    logger.info("✅ Scheduler started and job scheduled.")
+    print("called daily fetch")

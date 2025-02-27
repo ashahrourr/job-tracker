@@ -71,6 +71,7 @@ def process_emails(db: Session = Depends(get_db)):
 # ✅ Step 4: Start the Scheduler on FastAPI Startup
 @app.on_event("startup")
 def on_startup():
+    print("on start is working in main")
     from backend.scheduler import start_scheduler
     start_scheduler()
-    print("✅ Scheduler started...")
+    print("start scheduler called")
