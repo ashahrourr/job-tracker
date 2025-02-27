@@ -5,12 +5,13 @@ import logging
 from backend.database import SessionLocal
 from backend.emails import get_gmail_service, fetch_and_classify_emails
 from backend.logic import insert_job_applications  # <-- import the new function
+import pytz
 
 logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
 
 def schedule_daily_fetch():
-    trigger = CronTrigger(hour=20, minute=22)
+    trigger = CronTrigger(hour=20, minute=40, timezone=pytz.timezone("America/New_York"))
     scheduler.add_job(
         func=daily_email_fetch_job, 
         trigger=trigger,
