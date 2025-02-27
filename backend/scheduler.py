@@ -6,12 +6,14 @@ from backend.database import SessionLocal
 from backend.emails import get_gmail_service, fetch_and_classify_emails
 from backend.logic import insert_job_applications  # <-- import the new function
 import pytz
+from apscheduler.triggers.interval import IntervalTrigger
+import datetime
 
 logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
 
 def schedule_daily_fetch():
-    trigger = CronTrigger(hour=20, minute=40, timezone=pytz.timezone("America/New_York"))
+    trigger = IntervalTrigger(seconds=120) 
     scheduler.add_job(
         func=daily_email_fetch_job, 
         trigger=trigger,
@@ -22,6 +24,8 @@ def schedule_daily_fetch():
 def daily_email_fetch_job():
     db = SessionLocal()
     try:
+        current_time = datetime.now(pytz.utc)
+        logger.info(f"🕒 Current UTC Time: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
         logger.info("🔄 Running daily email fetch job...")
 
         service = get_gmail_service()
