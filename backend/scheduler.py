@@ -15,19 +15,20 @@ scheduler = BackgroundScheduler()
 def schedule_daily_fetch():
     print("inside daily fetch")
     trigger = IntervalTrigger(seconds=120) 
-    scheduler.add_job(
+    job = scheduler.add_job(
         func=daily_email_fetch_job, 
         trigger=trigger,
         id="daily_email_fetch",
         replace_existing=True
     )
     print(f"📌 Scheduled jobs: {scheduler.get_jobs()}")
+    print(f"🕒 Next run time: {job.next_run_time}")
 
 def daily_email_fetch_job():
     print("daily email fetch job called")
     db = SessionLocal()
     try:
-        current_time = datetime.now(pytz.utc)
+        current_time = datetime.datetime.now(pytz.utc)
         logger.info(f"🕒 Current UTC Time: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
         logger.info("🔄 Running daily email fetch job...")
 
