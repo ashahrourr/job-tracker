@@ -21,6 +21,7 @@ def schedule_daily_fetch():
         id="daily_email_fetch",
         replace_existing=True
     )
+    print(f"📌 Scheduled jobs: {scheduler.get_jobs()}")
 
 def daily_email_fetch_job():
     print("daily email fetch job called")
