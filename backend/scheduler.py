@@ -10,7 +10,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 import datetime
 
 logger = logging.getLogger(__name__)
-scheduler = BackgroundScheduler()
+scheduler = BackgroundScheduler(timezone=pytz.utc)
 
 def schedule_daily_fetch():
     print("inside daily fetch")
@@ -51,3 +51,4 @@ def start_scheduler():
     scheduler.start()
     schedule_daily_fetch()
     print("called daily fetch")
+
