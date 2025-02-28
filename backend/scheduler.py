@@ -16,15 +16,13 @@ scheduler = BackgroundScheduler(timezone=pytz.utc)
 
 def schedule_daily_fetch():
     print("inside daily fetch")
-    trigger = CronTrigger(hour=4, minute=59, timezone=pytz.utc)  
+    trigger = CronTrigger(hour=20, minute=40, timezone=pytz.utc)  
     job = scheduler.add_job(
         func=daily_email_fetch_job, 
         trigger=trigger,
         id="daily_email_fetch",
         replace_existing=True
     )
-    print(f"📌 Scheduled jobs: {scheduler.get_jobs()}")
-    print(f"🕒 Next run time: {job.next_run_time}")
 
 def daily_email_fetch_job():
     try:
@@ -83,6 +81,5 @@ def start_scheduler():
         print("⚠️ Scheduler already running.")
 
     schedule_daily_fetch()
-    print(f"📌 Jobs after scheduling: {scheduler.get_jobs()}")
 
 

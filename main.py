@@ -69,15 +69,15 @@ def process_emails(db: Session = Depends(get_db)):
         "message": f"Processed {processed_count} emails. Skipped {skipped_count}."
     }
 
-@app.get("/test-fetch")
-def test_fetch():
-    daily_email_fetch_job()  # ✅ Manually trigger the job
-    return {"message": "Manually triggered job"}
+# @app.get("/test-fetch")
+# def test_fetch():
+#     daily_email_fetch_job()  # ✅ Manually trigger the job
+#     return {"message": "Manually triggered job"}
 
-@app.get("/cron-trigger")
-def cron_trigger():
-    daily_email_fetch_job()
-    return {"message": "Job triggered via Render Cron at 11:59 PM"}
+# @app.get("/cron-trigger")
+# def cron_trigger():
+#     daily_email_fetch_job()
+#     return {"message": "Job triggered via Render Cron at 11:59 PM"}
 
 
 # ✅ Step 4: Start the Scheduler on FastAPI Startup
@@ -86,4 +86,3 @@ def on_startup():
     print("on start is working in main")
     from backend.scheduler import start_scheduler
     start_scheduler()
-    print("start scheduler called")
