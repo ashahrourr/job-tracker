@@ -1,8 +1,9 @@
-from sqlalchemy import create_engine, Column, String, Integer
+from sqlalchemy import create_engine, Column, String, Integer, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
 from dotenv import load_dotenv
+import datetime
 
 # Load environment variables from .env file
 load_dotenv()
@@ -20,7 +21,7 @@ class JobApplication(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     company = Column(String, nullable=False)
     job_title = Column(String, nullable=False)
-    applied_date = Column(String, nullable=False)
+    applied_date = Column(DateTime, default=datetime.datetime.utcnow)
 
 # ✅ New Table: Store Gmail API Tokens
 class TokenStore(Base):
