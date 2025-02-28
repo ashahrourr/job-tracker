@@ -47,8 +47,16 @@ def daily_email_fetch_job():
         db.close()
 
 def start_scheduler():
-    print("inside stat scheduler")
-    scheduler.start()
+    print("🚀 Inside start scheduler")
+
+    if not scheduler.running:
+        print("✅ Starting scheduler...")
+        scheduler.start()
+    else:
+        print("⚠️ Scheduler already running.")
+
     schedule_daily_fetch()
-    print("called daily fetch")
+    print(f"📌 Jobs after scheduling: {scheduler.get_jobs()}")
+    print(f"🚦 Scheduler state: {scheduler.state}")  # ✅ Print scheduler state
+
 
