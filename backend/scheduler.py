@@ -16,8 +16,8 @@ scheduler = BackgroundScheduler(timezone=pytz.utc)
 
 def schedule_daily_fetch():
     print("inside daily fetch")
-    trigger = CronTrigger(hour=20, minute=40, timezone=pytz.utc)  
-    job = scheduler.add_job(
+    trigger = IntervalTrigger(120)  
+    scheduler.add_job(
         func=daily_email_fetch_job, 
         trigger=trigger,
         id="daily_email_fetch",
