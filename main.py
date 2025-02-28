@@ -6,6 +6,7 @@ from backend.auth import router as auth_router
 from backend.emails import router as gmail_router, get_gmail_service, fetch_and_classify_emails
 import spacy
 from backend.logic import insert_job_applications 
+from backend.scheduler import daily_email_fetch_job
 
 app = FastAPI()
 
@@ -67,6 +68,11 @@ def process_emails(db: Session = Depends(get_db)):
     return {
         "message": f"Processed {processed_count} emails. Skipped {skipped_count}."
     }
+
+@app.get("/test-fetch")
+def test_fetch():
+    daily_email_fetch_job()  # ✅ Manually trigger the job
+    return {"message": "Manually triggered job"}
 
 # ✅ Step 4: Start the Scheduler on FastAPI Startup
 @app.on_event("startup")
