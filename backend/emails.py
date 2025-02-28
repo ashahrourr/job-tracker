@@ -7,8 +7,9 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from fastapi import APIRouter, HTTPException
 from google.auth.transport.requests import Request
-from backend.database import SessionLocal, TokenStore, save_token_to_db
+from backend.database import SessionLocal, TokenStore
 import datetime
+from backend.auth import save_token_to_db
 
 router = APIRouter()
 
