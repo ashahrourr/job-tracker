@@ -74,6 +74,12 @@ def test_fetch():
     daily_email_fetch_job()  # ✅ Manually trigger the job
     return {"message": "Manually triggered job"}
 
+@app.get("/cron-trigger")
+def cron_trigger():
+    daily_email_fetch_job()
+    return {"message": "Job triggered via Render Cron at 11:59 PM"}
+
+
 # ✅ Step 4: Start the Scheduler on FastAPI Startup
 @app.on_event("startup")
 def on_startup():
