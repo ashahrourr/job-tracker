@@ -10,14 +10,8 @@ from google.auth.transport.requests import Request
 from backend.database import SessionLocal, TokenStore
 import datetime
 from backend.auth import save_token_to_db
-from backend.scheduler import daily_email_fetch_job
 
 router = APIRouter()
-
-@router.get("/test-fetch")
-def test_fetch():
-    daily_email_fetch_job()  # ✅ Manually run the job
-    return {"message": "Manually triggered job"}
 
 def get_gmail_service():
     """
