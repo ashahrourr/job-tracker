@@ -8,6 +8,7 @@ from backend.logic import insert_job_applications  # <-- import the new function
 import pytz
 from apscheduler.triggers.interval import IntervalTrigger
 import datetime
+import threading
 
 logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler(timezone=pytz.utc)
@@ -25,13 +26,13 @@ def schedule_daily_fetch():
     print(f"🕒 Next run time: {job.next_run_time}")
 
 def daily_email_fetch_job():
-    print("daily email fetch job called")
-    db = SessionLocal()
     try:
+        print("⚡ Running daily email fetch job NOW!")
+        db = SessionLocal()
         current_time = datetime.datetime.now(pytz.utc)
         logger.info(f"🕒 Current UTC Time: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
         logger.info("🔄 Running daily email fetch job...")
-
+        
         service = get_gmail_service()
         confirmations, _ = fetch_and_classify_emails(service)
 
@@ -42,21 +43,25 @@ def daily_email_fetch_job():
             logger.info("ℹ️ No confirmation emails found today.")
 
     except Exception as e:
-        logger.error(f"❌ Error in daily email fetch: {str(e)}")
+        print(f"❌ Error in daily email fetch job: {e}")
+        logger.error(f"❌ Error in daily email fetch: {e}")
     finally:
         db.close()
 
 def start_scheduler():
     print("🚀 Inside start scheduler")
 
-    if not scheduler.running:
-        print("✅ Starting scheduler...")
+    def run():
         scheduler.start()
+
+    if not scheduler.running:
+        print("✅ Starting scheduler in a thread...")
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
     else:
         print("⚠️ Scheduler already running.")
 
     schedule_daily_fetch()
     print(f"📌 Jobs after scheduling: {scheduler.get_jobs()}")
-    print(f"🚦 Scheduler state: {scheduler.state}")  # ✅ Print scheduler state
 
 
