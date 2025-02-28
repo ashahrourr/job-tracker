@@ -1,29 +1,13 @@
-# backend/scheduler.py
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
 import logging
 from backend.database import SessionLocal
 from backend.emails import get_gmail_service, fetch_and_classify_emails
 from backend.logic import insert_job_applications  # <-- import the new function
 import pytz
-from apscheduler.triggers.interval import IntervalTrigger
-from apscheduler.triggers.cron import CronTrigger
 import datetime
-import threading
+from fastapi import APIRouter
 
 logger = logging.getLogger(__name__)
-scheduler = BackgroundScheduler(timezone=pytz.utc)
-
-def schedule_daily_fetch():
-    print("inside daily fetch")
-    trigger = IntervalTrigger(seconds=120)  
-    scheduler.add_job(
-        func=daily_email_fetch_job, 
-        trigger=trigger,
-        id="daily_email_fetch",
-        replace_existing=True
-    )
-    print(f"📌 Scheduled jobs: {scheduler.get_jobs()}")
+router = APIRouter()
 
 def daily_email_fetch_job():
     try:
@@ -68,19 +52,9 @@ def daily_email_fetch_job():
         db.close()
 
 
-def start_scheduler():
-    print("🚀 Inside start scheduler")
-
-    def run():
-        scheduler.start()
-
-    if not scheduler.running:
-        print("✅ Starting scheduler in a thread...")
-        thread = threading.Thread(target=run, daemon=True)
-        thread.start()
-    else:
-        print("⚠️ Scheduler already running.")
-
-    schedule_daily_fetch()
-
-
+# ✅ New Route: Trigger Job via Render Cron Job
+@router.get("/cron-trigger")
+def cron_trigger():
+    print("✅ Cron job triggered successfully!")
+    daily_email_fetch_job()  # ✅ Run the job when Render hits this endpoint
+    return {"message": "Job triggered via Render Cron"}

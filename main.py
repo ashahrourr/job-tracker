@@ -6,13 +6,14 @@ from backend.auth import router as auth_router
 from backend.emails import router as gmail_router, get_gmail_service, fetch_and_classify_emails
 import spacy
 from backend.logic import insert_job_applications 
-from backend.scheduler import daily_email_fetch_job
+from backend.scheduler import router as scheduler_router 
 
 app = FastAPI()
 
 # Include the auth routes and Gmail-related routes
 app.include_router(auth_router)
 app.include_router(gmail_router)
+app.include_router(scheduler_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -68,21 +69,3 @@ def process_emails(db: Session = Depends(get_db)):
     return {
         "message": f"Processed {processed_count} emails. Skipped {skipped_count}."
     }
-
-# @app.get("/test-fetch")
-# def test_fetch():
-#     daily_email_fetch_job()  # ✅ Manually trigger the job
-#     return {"message": "Manually triggered job"}
-
-# @app.get("/cron-trigger")
-# def cron_trigger():
-#     daily_email_fetch_job()
-#     return {"message": "Job triggered via Render Cron at 11:59 PM"}
-
-
-# ✅ Step 4: Start the Scheduler on FastAPI Startup
-@app.on_event("startup")
-def on_startup():
-    print("on start is working in main")
-    from backend.scheduler import start_scheduler
-    start_scheduler()
