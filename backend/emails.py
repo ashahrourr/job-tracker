@@ -6,19 +6,38 @@ from bs4 import BeautifulSoup
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from fastapi import APIRouter, HTTPException
+from google.auth.transport.requests import Request
+from database import SessionLocal, TokenStore
 import datetime
+from database import save_token_to_db
 
 router = APIRouter()
 
 def get_gmail_service():
     """
-    Build and return a Gmail service object from saved credentials in 'token.json'.
-    Make sure 'token.json' was created via OAuth flow or however you manage your creds.
+    Retrieve Gmail API credentials from the database and refresh if expired.
     """
-    creds = Credentials.from_authorized_user_file(
-        "token.json",
-        ["https://www.googleapis.com/auth/gmail.readonly"]
+    db = SessionLocal()
+    token_entry = db.query(TokenStore).filter(TokenStore.id == "gmail").first()
+    db.close()
+
+    if not token_entry:
+        raise Exception("No stored token found. Please re-authenticate at /auth/login.")
+
+    creds = Credentials(
+        token=token_entry.token,
+        refresh_token=token_entry.refresh_token,
+        token_uri=token_entry.token_uri,
+        client_id=token_entry.client_id,
+        client_secret=token_entry.client_secret,
+        scopes=token_entry.scopes.split(","),
     )
+
+    # ✅ Refresh the token if expired
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+        save_token_to_db(creds)  # ✅ Save the refreshed token to the database
+
     return build("gmail", "v1", credentials=creds)
 
 
