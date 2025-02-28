@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, String
+from sqlalchemy import create_engine, Column, String, Integer
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
@@ -17,7 +17,7 @@ Base = declarative_base()
 class JobApplication(Base):
     __tablename__ = "job_applications"
 
-    id = Column(String, primary_key=True, autoincrement=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     company = Column(String, nullable=False)
     job_title = Column(String, nullable=False)
     applied_date = Column(String, nullable=False)
