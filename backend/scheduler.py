@@ -7,6 +7,7 @@ from backend.emails import get_gmail_service, fetch_and_classify_emails
 from backend.logic import insert_job_applications  # <-- import the new function
 import pytz
 from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.cron import CronTrigger
 import datetime
 import threading
 
@@ -15,7 +16,7 @@ scheduler = BackgroundScheduler(timezone=pytz.utc)
 
 def schedule_daily_fetch():
     print("inside daily fetch")
-    trigger = IntervalTrigger(seconds=120) 
+    trigger = CronTrigger(hour=4, minute=59, timezone=pytz.utc)  
     job = scheduler.add_job(
         func=daily_email_fetch_job, 
         trigger=trigger,
