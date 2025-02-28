@@ -1,6 +1,6 @@
 import logging
 from backend.database import SessionLocal
-from backend.emails import get_gmail_service, fetch_and_classify_emails
+from backend.emails import get_gmail_service, fetch_and_classify_emails, save_confirmations_to_json 
 from backend.logic import insert_job_applications  # <-- import the new function
 import pytz
 import datetime
@@ -38,6 +38,8 @@ def daily_email_fetch_job():
         print(f"✅ Confirmations fetched: {len(confirmations)}")
 
         if confirmations:
+            save_confirmations_to_json(confirmations, "job_conformation_emails.json")
+
             processed_count, skipped_count = insert_job_applications(db, confirmations)
             print(f"✅ Processed {processed_count} confirmations. Skipped {skipped_count}.")
         else:

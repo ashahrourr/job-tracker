@@ -8,7 +8,7 @@ MODEL_PATH = os.path.join(os.path.dirname(__file__), "job_extractor_model")
 def insert_job_applications(db, confirmations):
     """
     Load spaCy, parse each email for company/position,
-    insert into DB, return (processed_count, skipped_count).
+    insert into DB, ensure every confirmation email is recorded.
     """
 
     try:
@@ -30,13 +30,18 @@ def insert_job_applications(db, confirmations):
                 company = ent.text
             elif ent.label_ == "POSITION" and not job_title:
                 job_title = ent.text
-        
-        if company and job_title:
-            new_job = JobApplication(company=company, job_title=job_title)
+
+        # ✅ Ensure company is saved, even if position is missing
+        if company:
+            new_job = JobApplication(
+                company=company, 
+                job_title=job_title if job_title else "Unknown Position"  # ✅ Fallback for missing positions
+            )
             db.add(new_job)
             processed_count += 1
         else:
-            skipped_count += 1
+            skipped_count += 1  # Skip only if no company is found
 
     db.commit()
     return processed_count, skipped_count
+

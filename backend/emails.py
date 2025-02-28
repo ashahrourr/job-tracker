@@ -171,13 +171,14 @@ def fetch_and_classify_emails(service):
     rejections = []
 
     # 1. Build the query (only for "today")
+    start_date = datetime.datetime(2025, 2, 28)
     today = datetime.datetime.utcnow().date()
     query = (
         'subject:("thank you for applying" OR "application received" OR "your application" '
         'OR "job application" OR "your application was sent to" OR "indeed application" '
         'OR "you have applied to" OR "thanks for applying") '
-        f'after:{today.strftime("%Y/%m/%d")} '
-        f'before:{(today + datetime.timedelta(days=1)).strftime("%Y/%m/%d")}'
+        f'after:{start_date.strftime("%Y/%m/%d")} '  # ✅ Start from Feb 28, 2025
+        f'before:{(today + datetime.timedelta(days=1)).strftime("%Y/%m/%d")}'  # ✅ Up to today
     )
 
     # 2. Get ALL messages (pagination)
