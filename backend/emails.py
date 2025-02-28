@@ -257,6 +257,21 @@ def save_confirmations_to_json(confirmations, filename="job_confirmations.json")
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
+def save_rejections_to_json(rejections, filename="job_rejections.json"):
+    """
+    Saves only the job confirmations into a JSON file with the fields:
+    subject, body (500 chars), company (empty), position (empty).
+    """
+    data = {"emails": []}
+    for email in rejections:
+        data["emails"].append({
+            "subject": email["subject"],
+            "body": email["body"]
+        })
+
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+
 
 if __name__ == "__main__":
     service = get_gmail_service()

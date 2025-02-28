@@ -1,6 +1,6 @@
 import logging
 from backend.database import SessionLocal
-from backend.emails import get_gmail_service, fetch_and_classify_emails, save_confirmations_to_json 
+from backend.emails import get_gmail_service, fetch_and_classify_emails, save_confirmations_to_json, save_rejections_to_json
 from backend.logic import insert_job_applications  # <-- import the new function
 import pytz
 import datetime
@@ -32,7 +32,7 @@ def daily_email_fetch_job():
             print(f"❌ Failed to initialize Gmail service: {e}")
             raise e
 
-        confirmations, _ = fetch_and_classify_emails(service)
+        confirmations, rejections = fetch_and_classify_emails(service)
 
         # ✅ Check if confirmations were fetched
         print(f"✅ Confirmations fetched: {len(confirmations)}")
@@ -44,6 +44,11 @@ def daily_email_fetch_job():
             print(f"✅ Processed {processed_count} confirmations. Skipped {skipped_count}.")
         else:
             print("ℹ️ No confirmation emails found today.")
+
+        if rejections:
+            save_rejections_to_json(rejections, "job_rejection_emails.json")
+        else:
+            print("ℹ️ No rejection emails found today.")
 
     except Exception as e:
         print(f"❌ Error in daily email fetch job: {e}")
