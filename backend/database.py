@@ -17,7 +17,7 @@ Base = declarative_base()
 class JobApplication(Base):
     __tablename__ = "job_applications"
 
-    id = Column(String, primary_key=True)
+    id = Column(String, primary_key=True, autoincrement=True)
     company = Column(String, nullable=False)
     job_title = Column(String, nullable=False)
     applied_date = Column(String, nullable=False)
