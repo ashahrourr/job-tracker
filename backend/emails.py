@@ -10,6 +10,7 @@ from google.auth.transport.requests import Request
 from backend.database import SessionLocal, TokenStore
 import datetime
 from backend.auth import save_token_to_db
+import time
 
 router = APIRouter()
 
@@ -181,63 +182,76 @@ def fetch_and_classify_emails(service):
         f'before:{(today + datetime.timedelta(days=1)).strftime("%Y/%m/%d")}'  # ✅ Up to today
     )
 
-    # 2. Get ALL messages (pagination)
-    all_messages = []
+    # Batch settings
+    batch_size = 100  # Fetch 100 emails per batch
     next_page_token = None
 
     while True:
+        # Fetch a batch of emails
         response = service.users().messages().list(
             userId="me",
             q=query,
+            maxResults=batch_size,
             pageToken=next_page_token
         ).execute()
 
         messages = response.get("messages", [])
-        all_messages.extend(messages)
+        if not messages:
+            break  # No more emails
 
+        # Process each email in the batch
+        for msg in messages:
+            msg_data = service.users().messages().get(userId="me", id=msg["id"]).execute()
+            payload = msg_data.get("payload", {})
+            headers = payload.get("headers", [])
+
+            subject = next((h["value"] for h in headers if h["name"] == "Subject"), "No Subject")
+            snippet = msg_data.get("snippet", "")
+
+            # Extract the body
+            if "parts" in payload:
+                body = extract_body_from_parts(payload["parts"])
+            else:
+                data = payload.get("body", {}).get("data", "")
+                if data:
+                    body = clean_html_content(base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore"))
+                else:
+                    body = clean_html_content(snippet)
+
+            # Classify the email
+            classification = classify_job_email(subject, body)
+            if classification == "confirmation":
+                confirmations.append({
+                    "id": msg["id"],
+                    "subject": subject,
+                    "snippet": snippet,
+                    "body": body[:200],  # Truncate to 200 characters
+                })
+            elif classification == "rejection":
+                rejections.append({
+                    "id": msg["id"],
+                    "subject": subject,
+                    "snippet": snippet,
+                    "body": body[:200],
+                })
+
+        # Break if no more pages
         next_page_token = response.get("nextPageToken")
         if not next_page_token:
-            break  # No more pages
+            break
 
-    # 3. For each message, get details & classify
-    for msg in all_messages:
-        msg_data = service.users().messages().get(userId="me", id=msg["id"]).execute()
-        payload = msg_data.get("payload", {})
-        headers = payload.get("headers", [])
-
-        subject = next((h["value"] for h in headers if h["name"] == "Subject"), "No Subject")
-        snippet = msg_data.get("snippet", "")
-
-        # Extract the body
-        if "parts" in payload:
-            body = extract_body_from_parts(payload["parts"])
-        else:
-            data = payload.get("body", {}).get("data", "")
-            if data:
-                raw_decoded = base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
-                body = clean_html_content(raw_decoded)
-            else:
-                # Fallback to snippet
-                body = clean_html_content(snippet)
-
-        # Classify
-        classification = classify_job_email(subject, body)
-        if classification == "confirmation":
-            confirmations.append({
-                "id": msg["id"],
-                "subject": subject,
-                "snippet": snippet,
-                "body": body[:200],  # store up to 200 chars
-            })
-        elif classification == "rejection":
-            rejections.append({
-                "id": msg["id"],
-                "subject": subject,
-                "snippet": snippet,
-                "body": body[:200],
-            })
+        # Add a delay to avoid hitting API rate limits
+        time.sleep(1)
 
     return confirmations, rejections
+
+def daily_email_fetch_job():
+    try:
+        service = get_gmail_service()
+        confirmations, rejections = fetch_and_classify_emails(service)
+        logger.info(f"Processed {len(confirmations)} confirmations and {len(rejections)} rejections.")
+    except Exception as e:
+        logger.error(f"Error in daily email fetch: {e}")
 
 
 def save_confirmations_to_json(confirmations, filename="job_confirmations.json"):
