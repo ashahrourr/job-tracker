@@ -11,57 +11,37 @@ router = APIRouter()
 
 def daily_email_fetch_job():
     try:
-        print("⚡ Running daily email fetch job NOW!")
         db = SessionLocal()
 
-        # ✅ Force a debug print to confirm this line runs
-        print("✅ Successfully connected to DB, now getting current time")
-
-        current_time = datetime.datetime.now(pytz.utc)
-
-        # ✅ Print timestamp to confirm execution
-        print(f"🕒 Current UTC Time: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
-
-        logger.info(f"🔄 Running daily email fetch job...")
-
-        # ✅ Debugging Gmail service connection
         try:
             service = get_gmail_service()
-            print("✅ Successfully initialized Gmail service")
         except Exception as e:
-            print(f"❌ Failed to initialize Gmail service: {e}")
+            logger.error(f"Failed to initialize Gmail service: {e}")
             raise e
 
         confirmations, rejections = fetch_and_classify_emails(service)
-
-        # ✅ Check if confirmations were fetched
-        print(f"✅ Confirmations fetched: {len(confirmations)}")
 
         if confirmations:
             save_confirmations_to_json(confirmations, "job_conformation_emails.json")
 
             processed_count, skipped_count = insert_job_applications(db, confirmations)
-            print(f"✅ Processed {processed_count} confirmations. Skipped {skipped_count}.")
         else:
-            print("ℹ️ No confirmation emails found today.")
+            logger.info("ℹ️ No confirmation emails found today.")
 
         if rejections:
             save_rejections_to_json(rejections, "job_rejection_emails.json")
         else:
-            print("ℹ️ No rejection emails found today.")
+            logger.info("ℹ️ No rejection emails found today.")
 
     except Exception as e:
-        print(f"❌ Error in daily email fetch job: {e}")
         logger.error(f"❌ Error in daily email fetch: {e}")
 
     finally:
-        print("✅ Closing database connection")
         db.close()
 
 
 # ✅ New Route: Trigger Job via Render Cron Job
 @router.get("/cron-trigger")
 def cron_trigger():
-    print("✅ Cron job triggered successfully!")
     daily_email_fetch_job()  # ✅ Run the job when Render hits this endpoint
-    return {"message": "Job triggered via Render Cron"}
+    return {"message": "Job triggered via Cron org"}
