@@ -17,7 +17,11 @@ app.include_router(scheduler_router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://job-tracker-frontend-045g.onrender.com"],  # Allow your frontend
+    allow_origins=[
+        "https://job-tracker-frontend-045g.onrender.com",  # Production Frontend
+        "http://localhost:3000",  # Local Frontend (React, Next.js, etc.)
+        "http://127.0.0.1:3000"  # Localhost alternative
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

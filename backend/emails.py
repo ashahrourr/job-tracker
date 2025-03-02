@@ -11,6 +11,9 @@ from backend.database import SessionLocal, TokenStore
 import datetime
 from backend.auth import save_token_to_db
 import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
