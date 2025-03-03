@@ -113,13 +113,12 @@ def classify_job_email(subject, body):
     'rejection' if it contains job context AND rejection indicators,
     or 'not_job' if it doesn't match job context at all.
     """
-
     job_keywords = [
         "thank you for applying", "application received", "we received your application",
         "your recent job application", "application for", "your application to",
         "we've received your application", "job application confirmation",
         "thank you for your application", "your application was sent to",
-        "indeed application", "thanks for applying"
+        "indeed application", "thanks for applying", "application submitted", "application confirmation"
     ]
 
     job_patterns = [
@@ -133,14 +132,23 @@ def classify_job_email(subject, body):
         "unfortunately", "we will not be moving forward", "other candidates",
         "although we were impressed", "regret to inform", "not selected",
         "position has been filled", "more qualified candidates", "not move forward",
-        "not a fit", "not move forward with your application",
+        "not move forward with your application",
         "we have decided to pursue other candidates",
         "after careful consideration", "candidate whose experience more closely matches",
         "no longer under consideration", "not proceed with your application",
         "at this time we will not", "however, after reviewing", "difficult decision",
         "we received a large number of applications",
-        # LinkedIn-specific marker for rejections:
-        "email_jobs_application_rejected_", "after carful review"
+        "email_jobs_application_rejected_", "after careful review", "at this time", "after careful consideration"
+    ]
+
+    # NEW: Exclusion keywords to filter out reminder/incomplete application emails
+    exclude_keywords = [
+        "incomplete application",
+        "log back in",
+        "finish your application",
+        "complete your application",
+        "continue your application",
+        "apply now to be considered"
     ]
 
     subj_lower = subject.lower()
@@ -154,7 +162,12 @@ def classify_job_email(subject, body):
                 found_job_context = True
                 break
 
+    # If no job context is found, it's not a job-related email.
     if not found_job_context:
+        return "not_job"
+
+    # NEW: Exclude emails that are likely incomplete or reminders
+    if any(kw in subj_lower or kw in body_lower for kw in exclude_keywords):
         return "not_job"
 
     # 2) Check if there's a rejection phrase
@@ -163,7 +176,6 @@ def classify_job_email(subject, body):
         return "rejection"
     else:
         return "confirmation"
-
 
 
 def fetch_and_classify_emails(service):
@@ -180,7 +192,7 @@ def fetch_and_classify_emails(service):
     query = (
         'subject:("thank you for applying" OR "application received" OR "your application" '
         'OR "job application" OR "your application was sent to" OR "indeed application" '
-        'OR "you have applied to" OR "thanks for applying") '
+        'OR "you have applied to" OR "thanks for applying" OR "application submitted" OR "application confirmation") '
         f'after:{start_date.strftime("%Y/%m/%d")} '  # ✅ Start from Feb 28, 2025
         f'before:{(today + datetime.timedelta(days=1)).strftime("%Y/%m/%d")}'  # ✅ Up to today
     )
