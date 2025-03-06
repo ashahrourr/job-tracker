@@ -4,6 +4,14 @@ from spacy.util import minibatch, compounding
 import random
 import json
 
+def add_entity(entities, start, end, label):
+    # Check if the new entity overlaps with any existing entity
+    for s, e, _ in entities:
+        if not (end <= s or start >= e):
+            print(f"Skipping overlapping entity: {label} at ({start}, {end}) conflicts with ({s}, {e})")
+            return
+    entities.append((start, end, label))
+
 # Load training data from the JSON file
 with open("job_confirmations.json", "r", encoding="utf-8") as f:
     data = json.load(f)
@@ -16,19 +24,19 @@ for email in data.get("emails", []):
     
     company = email.get("company", "").strip()
     if company:
-        lower_company = company.lower()
-        start = lower_text.find(lower_company)
+        company_lower = company.lower()
+        start = lower_text.find(company_lower)
         if start != -1:
-            entities.append((start, start + len(company), "COMPANY"))
+            add_entity(entities, start, start + len(company_lower), "COMPANY")
         else:
             print(f"DEBUG: Company '{company}' not found in email body: {text}")
     
     position = email.get("position", "").strip()
     if position:
-        lower_position = position.lower()
-        start = lower_text.find(lower_position)
+        position_lower = position.lower()
+        start = lower_text.find(position_lower)
         if start != -1:
-            entities.append((start, start + len(position), "POSITION"))
+            add_entity(entities, start, start + len(position_lower), "POSITION")
         else:
             print(f"DEBUG: Position '{position}' not found in email body: {text}")
     
