@@ -15,10 +15,14 @@ function App() {
       .catch((error) => console.error("Error fetching jobs:", error));
   }, []);
 
-  const filteredJobs = jobs.filter(job =>
-    job.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    job.job_title.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredJobs = jobs.filter(job => {
+    const company = job.company?.toLowerCase() || '';
+    const jobTitle = job.job_title?.toLowerCase() || '';
+    return (
+      company.includes(searchTerm.toLowerCase()) ||
+      jobTitle.includes(searchTerm.toLowerCase())
+    );
+  });
 
   const getStatusColor = (status) => {
     const statusColors = {
