@@ -31,7 +31,7 @@ function App() {
       offer: "bg-yellow-500",
       rejected: "bg-red-500"
     };
-    return statusColors[status.toLowerCase()] || "bg-gray-500";
+    return statusColors[(status || "").toLowerCase()] || "bg-gray-500";
   };
 
   return (
