@@ -1,12 +1,15 @@
-# fly.toml app configuration file generated for backend-empty-leaf-246 on 2025-03-08T17:13:25-05:00
+# fly.toml app configuration file generated for backend-withered-sunset-5495 on 2025-03-08T17:35:04-05:00
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'backend-empty-leaf-246'
+app = 'backend-withered-sunset-5495'
 primary_region = 'ewr'
 
 [build]
+
+[processes]
+  app = 'uvicorn main:app --host 0.0.0.0 --port 8000'
 
 [http_service]
   internal_port = 8000
