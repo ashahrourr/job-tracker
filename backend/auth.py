@@ -83,7 +83,7 @@ async def callback(request: Request):
         jwt_token = create_access_token(data={"sub": user_email})
 
         # ✅ Redirect to frontend with token in the URL
-        FRONTEND_URL = "http://localhost:5173/"  # Change this if frontend URL is different
+        FRONTEND_URL = os.getenv("FRONTEND_URL")  # Change this if frontend URL is different
         return RedirectResponse(f"{FRONTEND_URL}?token={jwt_token}")
 
     except Exception as e:
