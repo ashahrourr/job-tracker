@@ -6,6 +6,7 @@ from backend.auth import router as auth_router
 from backend.emails import router as gmail_router
 from backend.scheduler import router as scheduler_router
 from backend.session import get_current_user
+import uvicorn
 
 app = FastAPI()
 
@@ -37,7 +38,7 @@ def get_db():
 # Root endpoint (for testing)
 @app.get("/")
 def read_root():
-    return {"message": "Job Tracker API is running!"}
+    return {"message": "Job Tracker API is running on Fly.io!"}
 
 # Get all job applications (for now, open to all; consider securing it later)
 @app.get("/jobs/")
@@ -45,17 +46,6 @@ def get_jobs(db: Session = Depends(get_db)):
     jobs = db.query(JobApplication).all()
     return jobs
 
-# (Optional) Manual email processing endpoint for the logged-in user
-# This is an alternative to using the GET /my-email-fetch endpoint in scheduler.py.
-# Uncomment if you want a POST endpoint in main.py as well.
-# @app.post("/jobs/process")
-# def process_emails(current_user: str = Depends(get_current_user), db: Session = Depends(get_db)):
-#     from backend.scheduler import process_user_emails
-#     try:
-#         results = process_user_emails(current_user)
-#         return {
-#             "message": f"Processed emails for {current_user}.",
-#             "details": results
-#         }
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
+# Ensure the app listens on 0.0.0.0:8000 for Fly.io
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
