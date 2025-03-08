@@ -17,16 +17,16 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-def get_gmail_service():
+def get_gmail_service(user_email: str):
     """
-    Retrieve Gmail API credentials from the database and refresh if expired.
+    Retrieve Gmail API credentials for a specific user and refresh if expired.
     """
     db = SessionLocal()
-    token_entry = db.query(TokenStore).filter(TokenStore.id == "gmail").first()
+    token_entry = db.query(TokenStore).filter(TokenStore.user_id == user_email).first()
     db.close()
 
     if not token_entry:
-        raise Exception("No stored token found. Please re-authenticate at /auth/login.")
+        raise Exception(f"No stored token found for {user_email}. Please re-authenticate at /auth/login.")
 
     creds = Credentials(
         token=token_entry.token,
@@ -37,10 +37,11 @@ def get_gmail_service():
         scopes=token_entry.scopes.split(","),
     )
 
-    # ✅ Refresh the token if expired
+    # Refresh the token if it is expired
     if creds.expired and creds.refresh_token:
         creds.refresh(Request())
-        save_token_to_db(creds)  # ✅ Save the refreshed token to the database
+        # Save the refreshed token for the user
+        save_token_to_db(creds, user_email)
 
     return build("gmail", "v1", credentials=creds)
 

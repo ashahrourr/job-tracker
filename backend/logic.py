@@ -1,15 +1,15 @@
-# backend/logic.py
+# logic.py
 import spacy
 from backend.database import JobApplication
 import os
 
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "job_extractor_model") 
 
-def insert_job_applications(db, confirmations):
+def insert_job_applications(db, confirmations, user_email: str):
     """
     Load spaCy, parse each email for company/position,
-    insert into DB, ensuring each confirmation email is recorded.
-    Skip duplicates if the same company and position already exist.
+    insert into DB ensuring each confirmation email is recorded for the specific user.
+    Skip duplicates if the same company and position already exist for that user.
     """
 
     try:
@@ -34,27 +34,24 @@ def insert_job_applications(db, confirmations):
 
         # Ensure company is present to proceed
         if company:
-            # Use a fallback for job_title if it's not extracted
             effective_title = job_title if job_title else "Unknown Position"
-
-            # Check for duplicates: same company and same position already in the DB
+            # Check for duplicates for the specific user
             duplicate = db.query(JobApplication).filter(
+                JobApplication.user_email == user_email,
                 JobApplication.company == company,
                 JobApplication.job_title == effective_title
             ).first()
 
             if duplicate:
-                # Duplicate found, skip this record
                 skipped_count += 1
                 continue
 
-            # Create new job application record if it's not a duplicate
-            new_job = JobApplication(company=company, job_title=effective_title)
+            # Create a new job application record with the user_email
+            new_job = JobApplication(user_email=user_email, company=company, job_title=effective_title)
             db.add(new_job)
             processed_count += 1
         else:
-            skipped_count += 1  # Skip if no company is found
+            skipped_count += 1
 
     db.commit()
     return processed_count, skipped_count
-
