@@ -16,7 +16,7 @@ RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
 # 🔹 Production stage (smaller image)
-FROM python:3.12-slim
+FROM python:3.12
 WORKDIR /app
 
 # ✅ Copy virtual environment & application code

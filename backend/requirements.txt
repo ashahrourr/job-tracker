@@ -15,7 +15,7 @@ cryptography==44.0.2
 cymem==2.0.11
 en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl#sha256=1932429db727d4bff3deed6b34cfc05df17794f4a52eeb26cf8928f7c1a0fb85
 exceptiongroup==1.2.2
-fastapi==0.115.8
+fastapi[standard]==0.115.8
 google-api-core==2.24.1
 google-api-python-client==2.161.0
 google-auth==2.38.0
