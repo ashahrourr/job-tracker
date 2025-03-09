@@ -8,10 +8,7 @@ import datetime
 
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
-
-if DATABASE_URL and "supabase.co" in DATABASE_URL:
-    DATABASE_URL += "?sslmode=require"
-    
+ 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
