@@ -20,8 +20,3 @@ primary_region = 'ewr'
   memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
-
-[processes]
-  app = "uvicorn main:app --host 0.0.0.0 --port 8000"
-
-
