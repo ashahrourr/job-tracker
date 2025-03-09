@@ -90,8 +90,6 @@ async def callback(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-from fastapi.responses import RedirectResponse
-
 @router.get("/auth/login")
 async def login():
     auth_url, _ = flow.authorization_url(prompt="consent")
