@@ -188,7 +188,8 @@ def fetch_and_classify_emails(service):
     rejections = []
 
     # 1. Build the query (only for "today")
-    start_date = datetime.datetime(2025, 2, 28)
+    # start_date = datetime.datetime(2025, 2, 28)
+    start_date = datetime.datetime.combine(today, datetime.time.min)
     today = datetime.datetime.utcnow().date()
     query = (
         'subject:("thank you for applying" OR "application received" OR "your application" '
