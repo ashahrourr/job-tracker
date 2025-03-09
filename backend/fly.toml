@@ -1,15 +1,12 @@
-# fly.toml app configuration file generated for backend-withered-sunset-5495 on 2025-03-08T17:35:04-05:00
+# fly.toml app configuration file generated for backend-white-dream-4537 on 2025-03-08T18:52:58-05:00
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'backend-withered-sunset-5495'
+app = 'backend-white-dream-4537'
 primary_region = 'ewr'
 
 [build]
-
-[processes]
-  app = 'uvicorn main:app --host 0.0.0.0 --port 8000'
 
 [http_service]
   internal_port = 8000
@@ -23,3 +20,7 @@ primary_region = 'ewr'
   memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
+
+[processes]
+  app = "uvicorn main:app --host 0.0.0.0 --port 8000"
+
