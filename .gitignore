@@ -23,6 +23,5 @@ token.json
 
 # Ignore data files
 job_confirmations.json
-job_conformation_emails.json
-job_rejection_emails.json
-job_confirmations_dataset.json
+email_dataset.json
+non_job_emails.json

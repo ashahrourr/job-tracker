@@ -1,8 +1,6 @@
-import os
 import re
 import json
 import base64
-import pickle
 from html import unescape
 from bs4 import BeautifulSoup
 from google.oauth2.credentials import Credentials
@@ -11,18 +9,22 @@ from fastapi import APIRouter, HTTPException
 from google.auth.transport.requests import Request
 from backend.database import SessionLocal, TokenStore
 import datetime
+from datetime import datetime, timedelta
+import pytz
 from backend.auth import save_token_to_db
 import time
 import logging
+import pickle
+import os
 
 logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 # --- Load the trained email classifier model ---
-MODEL_FILENAME = os.path.join(os.path.dirname(__file__), "email_classifier.pkl")
-with open(MODEL_FILENAME, "rb") as f:
-    email_classifier_model = pickle.load(f)
-
+# MODEL_FILENAME = os.path.join(os.path.dirname(__file__), "email_classifier.pkl")
+# with open(MODEL_FILENAME, "rb") as f:
+#     email_classifier_model = pickle.load(f)
 
 def get_gmail_service(user_email: str):
     """
@@ -123,49 +125,105 @@ def classify_job_email(subject, body):
     "rejection", or "not_job". The additional post-processing step (checking for
     rejection keywords) is optional if your model doesn't already differentiate.
     """
-    text = f"{subject} {body}"
-    # The model expects a list of texts as input.
-    prediction = email_classifier_model.predict([text])[0]
+        job_keywords = [
+        "thank you for applying", "application received", "we received your application",
+        "your recent job application", "application for", "your application to",
+        "we've received your application", "job application confirmation",
+        "thank you for your application", "your application was sent to",
+        "indeed application", "thanks for applying", "application submitted", "application confirmation"
+    ]
 
-    # Optional: If your model outputs "confirmation" but you want to further check for rejection
-    if prediction == "confirmation":
-        rejection_keywords = [
-            "unfortunately", "we will not be moving forward", "other candidates",
-            "although we were impressed", "regret to inform", "not selected",
-            "position has been filled", "more qualified candidates", "not move forward",
-            "not move forward with your application",
-            "we have decided to pursue other candidates",
-            "after careful consideration", "candidate whose experience more closely matches",
-            "no longer under consideration", "not proceed with your application",
-            "at this time we will not", "however, after reviewing", "difficult decision",
-            "we received a large number of applications",
-            "email_jobs_application_rejected_", "after careful review", "at this time", "after careful consideration"
-        ]
-        if any(kw in text.lower() for kw in rejection_keywords):
-            return "rejection"
+    job_patterns = [
+        r"thank you for applying to (.+)",
+        r"your application to (.+) has been received",
+        r"we received your application for (.+)",
+        r"application for (.+) at (.+) received"
+    ]
 
-    return prediction
+    rejection_keywords = [
+        "unfortunately", "we will not be moving forward", "other candidates",
+        "although we were impressed", "regret to inform", "not selected",
+        "position has been filled", "more qualified candidates", "not move forward",
+        "not move forward with your application",
+        "we have decided to pursue other candidates",
+        "after careful consideration", "candidate whose experience more closely matches",
+        "no longer under consideration", "not proceed with your application",
+        "at this time we will not", "however, after reviewing", "difficult decision",
+        "we received a large number of applications",
+        "email_jobs_application_rejected_", "after careful review", "at this time", "after careful consideration"
+    ]
 
+    # NEW: Exclusion keywords to filter out reminder/incomplete application emails
+    exclude_keywords = [
+        "incomplete application",
+        "log back in",
+        "finish your application",
+        "complete your application",
+        "continue your application",
+        "apply now to be considered"
+    ]
+
+    subj_lower = subject.lower()
+    body_lower = body.lower()
+
+    # 1) Check if it looks like a job email
+    found_job_context = any(k in subj_lower or k in body_lower for k in job_keywords)
+    if not found_job_context:
+        for pattern in job_patterns:
+            if re.search(pattern, subj_lower) or re.search(pattern, body_lower):
+                found_job_context = True
+                break
+
+    # If no job context is found, it's not a job-related email.
+    if not found_job_context:
+        return "not_job"
+
+    # NEW: Exclude emails that are likely incomplete or reminders
+    if any(kw in subj_lower or kw in body_lower for kw in exclude_keywords):
+        return "not_job"
+
+    # 2) Check if there's a rejection phrase
+    has_rejection = any(rk in subj_lower or rk in body_lower for rk in rejection_keywords)
+    if has_rejection:
+        return "rejection"
+    else:
+        return "confirmation"
 
 def fetch_and_classify_emails(service):
     """
     Fetch ALL messages from 'today' that appear to be job-related (based on the subject).
-    Then classify them into confirmations or rejections using the ML-based classifier.
+    Then classify them into confirmations or rejections using existing logic.
     """
     confirmations = []
     rejections = []
 
-    # Build the query (only for "today")
-    today = datetime.datetime.utcnow().date()
-    query = (
-    '("thank you for applying" OR "application received" OR "we received your application" '
-    'OR "your application has been received" OR "your job application" '
-    'OR "application submission confirmation" OR "linkedIn job application" OR "indeed application confirmation" '
-    'OR "your application was sent to" OR "we are reviewing your application" '
-    'OR "next steps in the hiring process") '
-    f'after:{today.strftime("%Y/%m/%d")}'
-    )
+    # 1. Build the query for "today" in the user's local timezone (EST)
+    est = pytz.timezone("America/New_York")
+    utc = pytz.utc
 
+    # Get current time in EST to determine today's date
+    now_est = datetime.now(est)
+    today_est = now_est.date()
+
+    # Start of today in EST (midnight) and convert to UTC
+    start_of_day_est = est.localize(datetime.combine(today_est, datetime.min.time()))
+    start_of_day_utc = start_of_day_est.astimezone(utc)
+
+    # End of today in EST (23:59:59.999999) and convert to UTC
+    end_of_day_est = est.localize(datetime.combine(today_est, datetime.max.time()))
+    end_of_day_utc = end_of_day_est.astimezone(utc)
+
+    # Convert to epoch timestamps in seconds
+    after_timestamp = int(start_of_day_utc.timestamp())
+    before_timestamp = int(end_of_day_utc.timestamp())
+
+    # Build the query using epoch timestamps for precise UTC filtering
+    query = (
+        'subject:("thank you for applying" OR "application received" OR "your application" '
+        'OR "job application" OR "your application was sent to" OR "indeed application" '
+        'OR "you have applied to" OR "thanks for applying" OR "application submitted" OR "application confirmation") '
+        f'after:{after_timestamp} before:{before_timestamp}'
+    )
 
     # Batch settings
     batch_size = 100  # Fetch 100 emails per batch
@@ -203,7 +261,7 @@ def fetch_and_classify_emails(service):
                 else:
                     body = clean_html_content(snippet)
 
-            # Classify the email using the ML model
+            # Classify the email
             classification = classify_job_email(subject, body)
             if classification == "confirmation":
                 confirmations.append({
@@ -229,7 +287,6 @@ def fetch_and_classify_emails(service):
         time.sleep(1)
 
     return confirmations, rejections
-
 
 def daily_email_fetch_job():
     try:
@@ -257,11 +314,10 @@ def save_confirmations_to_json(confirmations, filename="job_confirmations.json")
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
-
 def save_rejections_to_json(rejections, filename="job_rejections.json"):
     """
-    Saves only the job rejections into a JSON file with the fields:
-    subject, body (500 chars).
+    Saves only the job confirmations into a JSON file with the fields:
+    subject, body (500 chars), company (empty), position (empty).
     """
     data = {"emails": []}
     for email in rejections:
@@ -275,7 +331,7 @@ def save_rejections_to_json(rejections, filename="job_rejections.json"):
 
 
 if __name__ == "__main__":
-    service = get_gmail_service("your_email@example.com")  # Replace with a valid email
+    service = get_gmail_service()
     confirmations, rejections = fetch_and_classify_emails(service)
 
     # --- Print results to console ---
