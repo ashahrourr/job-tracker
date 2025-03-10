@@ -125,7 +125,7 @@ def classify_job_email(subject, body):
     "rejection", or "not_job". The additional post-processing step (checking for
     rejection keywords) is optional if your model doesn't already differentiate.
     """
-        job_keywords = [
+    job_keywords = [
         "thank you for applying", "application received", "we received your application",
         "your recent job application", "application for", "your application to",
         "we've received your application", "job application confirmation",
