@@ -3,88 +3,136 @@ from spacy.training import Example
 from spacy.util import minibatch, compounding
 import random
 import json
+import re
+from bs4 import BeautifulSoup
+from html import unescape
+from sklearn.model_selection import train_test_split
+import time
+
+def find_all_occurrences(text, target):
+    """
+    Find all case-insensitive full-word matches of target in text.
+    An alternative would be to use re.finditer with word boundaries.
+    """
+    occurrences = []
+    target_escaped = re.escape(target)
+    pattern = re.compile(r'\b' + target_escaped + r'\b', re.IGNORECASE)
+    for match in pattern.finditer(text):
+        occurrences.append((match.start(), match.end()))
+    return occurrences
 
 def add_entity(entities, start, end, label):
-    # Check if the new entity overlaps with any existing entity
+    """
+    Add an entity to the list, skipping overlapping ones.
+    """
     for s, e, _ in entities:
         if not (end <= s or start >= e):
             print(f"Skipping overlapping entity: {label} at ({start}, {end}) conflicts with ({s}, {e})")
             return
     entities.append((start, end, label))
 
-# Load training data from the JSON file
+def clean_html_content(content):
+    """
+    Clean HTML while preserving the link text.
+    Removes unwanted tags (script, style, head, meta, link) but keeps text.
+    """
+    soup = BeautifulSoup(content, "html.parser")
+    
+    # Preserve link text by replacing <a> tags with their inner text.
+    for link in soup.find_all('a'):
+        link_text = link.get_text(strip=True)
+        if link_text:
+            link.replace_with(f"{link_text} ")
+    
+    # Remove unwanted tags
+    for tag in soup(["script", "style", "head", "meta", "link"]):
+        tag.decompose()
+    
+    text = soup.get_text(separator=" ")
+    text = unescape(text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+# --- Load Training Data ---
 with open("job_confirmations.json", "r", encoding="utf-8") as f:
     data = json.load(f)
 
 TRAIN_DATA = []
 for email in data.get("emails", []):
     text = email.get("body", "")
-    lower_text = text.lower()
     entities = []
     
+    # Extract COMPANY entities
     company = email.get("company", "").strip()
     if company:
-        company_lower = company.lower()
-        start = lower_text.find(company_lower)
-        if start != -1:
-            add_entity(entities, start, start + len(company_lower), "COMPANY")
-        else:
-            print(f"DEBUG: Company '{company}' not found in email body: {text}")
+        for start, end in find_all_occurrences(text, company):
+            add_entity(entities, start, end, "COMPANY")
     
+    # Extract POSITION entities
     position = email.get("position", "").strip()
     if position:
-        position_lower = position.lower()
-        start = lower_text.find(position_lower)
-        if start != -1:
-            add_entity(entities, start, start + len(position_lower), "POSITION")
-        else:
-            print(f"DEBUG: Position '{position}' not found in email body: {text}")
+        for start, end in find_all_occurrences(text, position):
+            add_entity(entities, start, end, "POSITION")
     
-    # Only add if at least one entity is found
     if entities:
         TRAIN_DATA.append((text, {"entities": entities}))
 
-if not TRAIN_DATA:
-    print("No training examples found. Check your JSON data.")
-    exit()
-
-# Load a pre-trained spaCy model (make sure to run: python -m spacy download en_core_web_sm)
+# --- Model Setup ---
 nlp = spacy.load("en_core_web_sm")
+ner = nlp.get_pipe("ner")
 
-# Get the NER component from the pipeline (add it if it's missing)
-if "ner" not in nlp.pipe_names:
-    ner = nlp.add_pipe("ner", last=True)
-else:
-    ner = nlp.get_pipe("ner")
+# Add custom labels if not already present
+for label in ["COMPANY", "POSITION"]:
+    ner.add_label(label)
 
-# Add new labels from your training data to the NER component
-for _, annotations in TRAIN_DATA:
-    for ent in annotations.get("entities"):
-        ner.add_label(ent[2])
+# --- Training Setup ---
+# Disable other pipes for faster training
+with nlp.disable_pipes(*[p for p in nlp.pipe_names if p != "ner"]):
+    optimizer = nlp.resume_training()
 
-# Disable other pipes during training to prevent them from being updated
-other_pipes = [pipe for pipe in nlp.pipe_names if pipe != "ner"]
-with nlp.disable_pipes(*other_pipes):  # only train NER
-    optimizer = nlp.resume_training()   # resume training on the pre-trained model
-    n_iter = 20
-    print("Starting training...")
+    # Split data into training and validation sets (with fixed random_state for reproducibility)
+    train_data, val_data = train_test_split(TRAIN_DATA, test_size=0.2, random_state=42)
     
-    for itn in range(n_iter):
-        random.shuffle(TRAIN_DATA)
+    best_fscore = 0.0  # Using F-score as a performance metric
+    patience = 3
+    no_improvement = 0
+    epochs = 50
+    
+    for epoch in range(epochs):
+        random.shuffle(train_data)
         losses = {}
         examples = []
-        # Create spaCy Example objects for the current iteration
-        for text, annots in TRAIN_DATA:
+        for text, annot in train_data:
             doc = nlp.make_doc(text)
-            example = Example.from_dict(doc, annots)
-            examples.append(example)
-        # Create minibatches and update the model
+            examples.append(Example.from_dict(doc, annot))
+        
+        # Batch training with a variable batch size
         batches = minibatch(examples, size=compounding(4.0, 32.0, 1.001))
         for batch in batches:
-            nlp.update(batch, drop=0.5, losses=losses)
-        print(f"Iteration {itn+1} - Losses: {losses}")
+            nlp.update(batch, drop=0.4, losses=losses, sgd=optimizer)
+        
+        # --- Validation ---
+        # Create validation examples and evaluate the model.
+        val_examples = []
+        for text, annot in val_data:
+            doc = nlp.make_doc(text)
+            val_examples.append(Example.from_dict(doc, annot))
+        val_scores = nlp.evaluate(val_examples)
+        # Use entity F-score as the metric (higher is better)
+        val_fscore = val_scores.get("ents_f", 0)
+        print(f"Epoch {epoch+1} - Train Loss: {losses.get('ner', 0):.2f}, Val F-score: {val_fscore:.2f}")
+        
+        # Early stopping: stop training if no improvement in F-score for 'patience' epochs.
+        if val_fscore > best_fscore:
+            best_fscore = val_fscore
+            no_improvement = 0
+        else:
+            no_improvement += 1
+            if no_improvement >= patience:
+                print("Early stopping triggered")
+                break
 
-# Save the fine-tuned model
-model_dir = "job_extractor_model"
+# --- Save the Trained Model ---
+model_dir = f"job_extractor_model_v{int(time.time())}"
 nlp.to_disk(model_dir)
-print(f"Model saved to '{model_dir}'")
+print(f"Model saved to {model_dir}")

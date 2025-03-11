@@ -18,24 +18,28 @@ import pickle
 import os
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter()
 
 # --- Load the trained email classifier model ---
-# MODEL_FILENAME = os.path.join(os.path.dirname(__file__), "email_classifier.pkl")
-# with open(MODEL_FILENAME, "rb") as f:
-#     email_classifier_model = pickle.load(f)
+MODEL_FILENAME = os.path.join(os.path.dirname(__file__), "email_classifier_v1741655564.pkl")
+email_classifier_model = None
+
+try:
+    with open(MODEL_FILENAME, "rb") as f:
+        email_classifier_model = pickle.load(f)
+    logger.info("ML model loaded successfully")
+except Exception as e:
+    logger.error(f"Failed to load ML model: {str(e)}")
+    raise RuntimeError("Email classifier model failed to initialize")
 
 def get_gmail_service(user_email: str):
-    """
-    Retrieve Gmail API credentials for a specific user and refresh if expired.
-    """
+    """Retrieve Gmail API credentials for a specific user"""
     db = SessionLocal()
     token_entry = db.query(TokenStore).filter(TokenStore.user_id == user_email).first()
     db.close()
 
     if not token_entry:
-        raise Exception(f"No stored token found for {user_email}. Please re-authenticate at /auth/login.")
+        raise HTTPException(status_code=401, detail="User not authenticated")
 
     creds = Credentials(
         token=token_entry.token,
@@ -46,304 +50,209 @@ def get_gmail_service(user_email: str):
         scopes=token_entry.scopes.split(","),
     )
 
-    # Refresh the token if it is expired
     if creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        # Save the refreshed token for the user
-        save_token_to_db(creds, user_email)
+        try:
+            creds.refresh(Request())
+            save_token_to_db(creds, user_email)
+        except Exception as e:
+            logger.error(f"Token refresh failed: {str(e)}")
+            raise HTTPException(status_code=401, detail="Token refresh failed")
 
     return build("gmail", "v1", credentials=creds)
 
-
 def clean_html_content(content):
     """
-    Given a string that might contain HTML, parse with BeautifulSoup,
-    remove script/style tags, and return a nicely stripped plain-text version.
-    - Normalizes extra whitespace.
-    - Converts HTML entities (like &nbsp;) to normal text.
+    Clean HTML email content while preserving link text.
+    
+    - Extracts link text so that if the entity (e.g. "Software Engineer") is displayed as a link,
+      the text is preserved.
+    - Removes unwanted tags, URLs, emails, punctuation, and numbers.
     """
     soup = BeautifulSoup(content, "html.parser")
-
-    # Remove script and style elements
-    for tag in soup(["script", "style"]):
+    
+    # Preserve link text: replace <a> tags with their inner text
+    for link in soup.find_all('a'):
+        link_text = link.get_text(strip=True)
+        if link_text:
+            link.replace_with(f"{link_text} ")
+    
+    # Remove unwanted tags (script, style, head, meta, link)
+    for tag in soup(["script", "style", "head", "meta", "link"]):
         tag.decompose()
-
-    # Get the text and do a basic normalization of whitespace
+    
     text = soup.get_text(separator=" ")
-    text = unescape(text)           # Convert HTML entities
-    text = " ".join(text.split())   # Remove excessive whitespace/newlines
+    text = unescape(text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    # Additional cleaning: remove any leftover URLs, email addresses, punctuation, and numbers.
+    text = re.sub(r'http\S+', '', text)
+    text = re.sub(r'\S+@\S+', '', text)
+    text = re.sub(r'[^\w\s]', ' ', text)
+    text = re.sub(r'\d+', '', text)
     return text
 
-
 def extract_body_from_parts(parts):
-    """
-    Recursively traverse the payload parts to find 'text/plain' or 'text/html'.
-    If no text/plain is found, fallback to text/html, then clean the HTML.
-    """
-    queue = list(parts)
-    html_fallback = None
+    """Recursively extract email body content from multipart messages."""
+    body_content = []
+    html_content = []
 
-    while queue:
-        part = queue.pop()
+    def process_part(part):
+        nonlocal body_content, html_content
         mime_type = part.get("mimeType", "")
         data = part.get("body", {}).get("data", "")
-
+        
         if data:
-            decoded = base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
-        else:
-            decoded = ""
+            try:
+                decoded = base64.urlsafe_b64decode(data).decode("utf-8")
+                if mime_type == "text/plain":
+                    body_content.append(clean_html_content(decoded))
+                elif mime_type == "text/html" and not body_content:
+                    html_content.append(decoded)
+            except Exception as e:
+                logger.error(f"Error decoding part: {str(e)}")
 
-        # 1) If it's text/plain, we still want to run it through clean_html_content
-        #    in case it has partial HTML or inline tags. 
-        if mime_type == "text/plain" and decoded:
-            return clean_html_content(decoded)
+        for subpart in part.get("parts", []):
+            process_part(subpart)
 
-        # 2) If it's text/html, hold onto it as a fallback if we never find a plain-text part
-        if mime_type == "text/html" and decoded:
-            # We'll use the *first* HTML fallback encountered
-            if html_fallback is None:
-                html_fallback = decoded
+    for part in parts:
+        process_part(part)
 
-        # 3) Check sub-parts recursively
-        sub_parts = part.get("parts", [])
-        if sub_parts:
-            queue.extend(sub_parts)
-
-    # If we get here and never found a "text/plain" part, but we do have HTML:
-    if html_fallback:
-        return clean_html_content(html_fallback)
-
-    # If there's no text content at all, return empty
+    if body_content:
+        return " ".join(body_content)
+    if html_content:
+        return clean_html_content(" ".join(html_content))
     return ""
 
-
 def classify_job_email(subject, body):
+    """Classify email using the ML classifier model.
+       Matches the training format: subject + space + body.
     """
-    Use the ML model to classify the email.
-    The model expects a single string input (e.g. subject + " " + body).
-    Depending on your training, your model might output labels like "confirmation",
-    "rejection", or "not_job". The additional post-processing step (checking for
-    rejection keywords) is optional if your model doesn't already differentiate.
-    """
-    job_keywords = [
-        "thank you for applying", "application received", "we received your application",
-        "your recent job application", "application for", "your application to",
-        "we've received your application", "job application confirmation",
-        "thank you for your application", "your application was sent to",
-        "indeed application", "thanks for applying", "application submitted", "application confirmation"
-    ]
-
-    job_patterns = [
-        r"thank you for applying to (.+)",
-        r"your application to (.+) has been received",
-        r"we received your application for (.+)",
-        r"application for (.+) at (.+) received"
-    ]
-
-    rejection_keywords = [
-        "unfortunately", "we will not be moving forward", "other candidates",
-        "although we were impressed", "regret to inform", "not selected",
-        "position has been filled", "more qualified candidates", "not move forward",
-        "not move forward with your application",
-        "we have decided to pursue other candidates",
-        "after careful consideration", "candidate whose experience more closely matches",
-        "no longer under consideration", "not proceed with your application",
-        "at this time we will not", "however, after reviewing", "difficult decision",
-        "we received a large number of applications",
-        "email_jobs_application_rejected_", "after careful review", "at this time", "after careful consideration"
-    ]
-
-    # NEW: Exclusion keywords to filter out reminder/incomplete application emails
-    exclude_keywords = [
-        "incomplete application",
-        "log back in",
-        "finish your application",
-        "complete your application",
-        "continue your application",
-        "apply now to be considered"
-    ]
-
-    subj_lower = subject.lower()
-    body_lower = body.lower()
-
-    # 1) Check if it looks like a job email
-    found_job_context = any(k in subj_lower or k in body_lower for k in job_keywords)
-    if not found_job_context:
-        for pattern in job_patterns:
-            if re.search(pattern, subj_lower) or re.search(pattern, body_lower):
-                found_job_context = True
-                break
-
-    # If no job context is found, it's not a job-related email.
-    if not found_job_context:
+    if not email_classifier_model:
+        logger.error("Classifier model not available")
         return "not_job"
 
-    # NEW: Exclude emails that are likely incomplete or reminders
-    if any(kw in subj_lower or kw in body_lower for kw in exclude_keywords):
+    try:
+        email_text = f"{subject} {body}"
+        prediction = email_classifier_model.predict([email_text])[0]
+        return prediction
+    except Exception as e:
+        logger.error(f"Classification error: {str(e)}")
         return "not_job"
-
-    # 2) Check if there's a rejection phrase
-    has_rejection = any(rk in subj_lower or rk in body_lower for rk in rejection_keywords)
-    if has_rejection:
-        return "rejection"
-    else:
-        return "confirmation"
 
 def fetch_and_classify_emails(service):
-    """
-    Fetch ALL messages from 'today' that appear to be job-related (based on the subject).
-    Then classify them into confirmations or rejections using existing logic.
-    """
+    """Fetch emails via the Gmail API and classify each email using the ML model."""
     confirmations = []
     rejections = []
 
-    # 1. Build the query for "today" in the user's local timezone (EST)
+    # Date range setup for today's emails in EST
     est = pytz.timezone("America/New_York")
     utc = pytz.utc
-
-    # Get current time in EST to determine today's date
     now_est = datetime.now(est)
     today_est = now_est.date()
+    
+    start_time = est.localize(datetime.combine(today_est, datetime.min.time()))
+    end_time = est.localize(datetime.combine(today_est, datetime.max.time()))
+    
+    query = f"after:{int(start_time.astimezone(utc).timestamp())} " \
+            f"before:{int(end_time.astimezone(utc).timestamp())}"
 
-    # Start of today in EST (midnight) and convert to UTC
-    start_of_day_est = est.localize(datetime.combine(today_est, datetime.min.time()))
-    start_of_day_utc = start_of_day_est.astimezone(utc)
+    try:
+        messages = []
+        page_token = None
+        
+        while True:
+            result = service.users().messages().list(
+                userId="me",
+                q=query,
+                maxResults=500,
+                pageToken=page_token
+            ).execute()
+            
+            messages.extend(result.get("messages", []))
+            page_token = result.get("nextPageToken")
+            if not page_token:
+                break
 
-    # End of today in EST (23:59:59.999999) and convert to UTC
-    end_of_day_est = est.localize(datetime.combine(today_est, datetime.max.time()))
-    end_of_day_utc = end_of_day_est.astimezone(utc)
-
-    # Convert to epoch timestamps in seconds
-    after_timestamp = int(start_of_day_utc.timestamp())
-    before_timestamp = int(end_of_day_utc.timestamp())
-
-    # Build the query using epoch timestamps for precise UTC filtering
-    query = (
-        'subject:("thank you for applying" OR "application received" OR "your application" '
-        'OR "job application" OR "your application was sent to" OR "indeed application" '
-        'OR "you have applied to" OR "thanks for applying" OR "application submitted" OR "application confirmation") '
-        f'after:{after_timestamp} before:{before_timestamp}'
-    )
-
-    # Batch settings
-    batch_size = 100  # Fetch 100 emails per batch
-    next_page_token = None
-
-    while True:
-        # Fetch a batch of emails
-        response = service.users().messages().list(
-            userId="me",
-            q=query,
-            maxResults=batch_size,
-            pageToken=next_page_token
-        ).execute()
-
-        messages = response.get("messages", [])
-        if not messages:
-            break  # No more emails
-
-        # Process each email in the batch
         for msg in messages:
-            msg_data = service.users().messages().get(userId="me", id=msg["id"]).execute()
-            payload = msg_data.get("payload", {})
-            headers = payload.get("headers", [])
-
-            subject = next((h["value"] for h in headers if h["name"] == "Subject"), "No Subject")
-            snippet = msg_data.get("snippet", "")
-
-            # Extract the body
-            if "parts" in payload:
-                body = extract_body_from_parts(payload["parts"])
-            else:
-                data = payload.get("body", {}).get("data", "")
-                if data:
-                    body = clean_html_content(base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore"))
+            try:
+                msg_data = service.users().messages().get(
+                    userId="me", 
+                    id=msg["id"],
+                    format="full"
+                ).execute()
+                
+                payload = msg_data.get("payload", {})
+                headers = {h["name"]: h["value"] for h in payload.get("headers", [])}
+                subject = headers.get("Subject", "No Subject")
+                
+                # Extract body content from multipart or single-part messages
+                if "parts" in payload:
+                    body = extract_body_from_parts(payload["parts"])
                 else:
-                    body = clean_html_content(snippet)
-
-            # Classify the email
-            classification = classify_job_email(subject, body)
-            if classification == "confirmation":
-                confirmations.append({
+                    data = payload.get("body", {}).get("data", "")
+                    body = clean_html_content(
+                        base64.urlsafe_b64decode(data).decode("utf-8")
+                    ) if data else ""
+                
+                classification = classify_job_email(subject, body)
+                entry = {
                     "id": msg["id"],
                     "subject": subject,
-                    "snippet": snippet,
-                    "body": body[:200],  # Truncate to 200 characters
-                })
-            elif classification == "rejection":
-                rejections.append({
-                    "id": msg["id"],
-                    "subject": subject,
-                    "snippet": snippet,
-                    "body": body[:200],
-                })
+                    "snippet": msg_data.get("snippet", ""),
+                    "body": body[:200]  # Truncated for storage
+                }
 
-        # Break if no more pages
-        next_page_token = response.get("nextPageToken")
-        if not next_page_token:
-            break
+                if classification == "confirmation":
+                    confirmations.append(entry)
+                elif classification == "rejection":
+                    rejections.append(entry)
 
-        # Add a delay to avoid hitting API rate limits
-        time.sleep(1)
+            except Exception as e:
+                logger.error(f"Error processing message {msg['id']}: {str(e)}")
+
+    except Exception as e:
+        logger.error(f"Gmail API error: {str(e)}")
+        raise
 
     return confirmations, rejections
 
-def daily_email_fetch_job():
+def save_classified_emails(confirmations, rejections):
+    """Save the classified confirmation and rejection emails to JSON files."""
     try:
-        service = get_gmail_service()
-        confirmations, rejections = fetch_and_classify_emails(service)
-        logger.info(f"Processed {len(confirmations)} confirmations and {len(rejections)} rejections.")
+        if confirmations:
+            with open("job_confirmations.json", "w") as f:
+                json.dump({
+                    "emails": [{
+                        "subject": e["subject"],
+                        "body": e["body"],
+                        "company": "",
+                        "position": ""
+                    } for e in confirmations]
+                }, f, indent=2)
+
+        if rejections:
+            with open("job_rejections.json", "w") as f:
+                json.dump({
+                    "emails": [{
+                        "subject": e["subject"],
+                        "body": e["body"]
+                    } for e in rejections]
+                }, f, indent=2)
+                
     except Exception as e:
-        logger.error(f"Error in daily email fetch: {e}")
-
-
-def save_confirmations_to_json(confirmations, filename="job_confirmations.json"):
-    """
-    Saves only the job confirmations into a JSON file with the fields:
-    subject, body (500 chars), company (empty), position (empty).
-    """
-    data = {"emails": []}
-    for email in confirmations:
-        data["emails"].append({
-            "subject": email["subject"],
-            "body": email["body"],  # truncated to 500 chars
-            "company": "",
-            "position": ""
-        })
-
-    with open(filename, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
-
-def save_rejections_to_json(rejections, filename="job_rejections.json"):
-    """
-    Saves only the job confirmations into a JSON file with the fields:
-    subject, body (500 chars), company (empty), position (empty).
-    """
-    data = {"emails": []}
-    for email in rejections:
-        data["emails"].append({
-            "subject": email["subject"],
-            "body": email["body"]
-        })
-
-    with open(filename, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
-
+        logger.error(f"File save error: {str(e)}")
 
 if __name__ == "__main__":
-    service = get_gmail_service()
-    confirmations, rejections = fetch_and_classify_emails(service)
-
-    # --- Print results to console ---
-    num_confirmations = len(confirmations)
-    num_rejections = len(rejections)
-
-    print(f"\n🟢 Found {num_confirmations} Confirmation Emails:")
-    print(f"\n🔴 Found {num_rejections} Rejection Emails:")
-
-    # --- Save only the confirmations to a JSON file ---
-    save_confirmations_to_json(confirmations, filename="job_confirmations.json")
-    print(
-        f"\n✅ Saved {num_confirmations} confirmation emails to 'job_confirmations.json'. "
-        "Company/position fields are left empty."
-    )
+    try:
+        # Replace with the actual user email
+        user_email = "ashahrourr@gmail.com"  
+        service = get_gmail_service(user_email)
+        confirmations, rejections = fetch_and_classify_emails(service)
+        save_classified_emails(confirmations, rejections)
+        
+        print(f"Found {len(confirmations)} confirmations and {len(rejections)} rejections")
+        print("Results saved to job_confirmations.json and job_rejections.json")
+        
+    except Exception as e:
+        logger.error(f"Critical error: {str(e)}")
+        exit(1)

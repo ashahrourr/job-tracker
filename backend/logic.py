@@ -1,17 +1,18 @@
-# logic.py
 import spacy
 from backend.database import JobApplication
 import os
 
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "job_extractor_model") 
+# Specify the directory of your saved spaCy NER model.
+# (If you are versioning your model directories, update this path accordingly.)
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "job_extractor_model_v1741654429") 
 
 def insert_job_applications(db, confirmations, user_email: str):
     """
-    Load spaCy, parse each email for company/position,
-    insert into DB ensuring each confirmation email is recorded for the specific user.
-    Skip duplicates if the same company and position already exist for that user.
+    Load the spaCy NER model, parse each confirmation email to extract the COMPANY and POSITION,
+    and insert new job applications into the database for the given user.
+    
+    Duplicates are skipped if a record with the same company and position already exists.
     """
-
     try:
         nlp = spacy.load(MODEL_PATH)
     except Exception as e:
@@ -32,7 +33,7 @@ def insert_job_applications(db, confirmations, user_email: str):
             elif ent.label_ == "POSITION" and not job_title:
                 job_title = ent.text
 
-        # Ensure company is present to proceed
+        # Only proceed if a company was detected
         if company:
             effective_title = job_title if job_title else "Unknown Position"
             # Check for duplicates for the specific user
@@ -46,7 +47,7 @@ def insert_job_applications(db, confirmations, user_email: str):
                 skipped_count += 1
                 continue
 
-            # Create a new job application record with the user_email
+            # Insert new job application record
             new_job = JobApplication(user_email=user_email, company=company, job_title=effective_title)
             db.add(new_job)
             processed_count += 1
