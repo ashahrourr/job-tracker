@@ -22,6 +22,8 @@ from backend.workflow_pipeline.database import SessionLocal, TokenStore
 from backend.workflow_pipeline.auth import save_token_to_db
 from fastapi import APIRouter, HTTPException
 
+router = APIRouter()
+
 # ========== SETUP LOGGING ==========
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -172,7 +174,7 @@ class EntityExtractor:
     and extracts these entities from text.
     """
     def __init__(self, model_dir_or_name: str):
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cpu")
         self.tokenizer = AutoTokenizer.from_pretrained(model_dir_or_name)
         self.model = AutoModelForTokenClassification.from_pretrained(model_dir_or_name)
         self.model.eval()
@@ -311,7 +313,6 @@ def fetch_and_classify_emails(service):
 
             # Skip any rejection
             if is_rejection(subject, cleaned_body):
-                print(f"❌ Skipping rejected email: {subject}")
                 continue
 
             # Classify
