@@ -1,11 +1,11 @@
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
-from backend.database import SessionLocal, JobApplication
+from backend.workflow_pipeline.database import SessionLocal, JobApplication
 from fastapi.middleware.cors import CORSMiddleware
-from backend.auth import router as auth_router
-from backend.emails import router as gmail_router
-from backend.scheduler import router as scheduler_router
-from backend.session import get_current_user
+from backend.workflow_pipeline.auth import router as auth_router
+from backend.workflow_pipeline.emails import router as gmail_router
+from backend.workflow_pipeline.scheduler import router as scheduler_router
+from backend.workflow_pipeline.session import get_current_user
 import uvicorn
 
 app = FastAPI()

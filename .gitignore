@@ -25,3 +25,13 @@ token.json
 job_confirmations.json
 email_dataset.json
 non_job_emails.json
+merged_dataset_classify.json
+
+# Ignore folders
+classify_model/
+extract_model/
+extras/
+
+# Models
+email_classifier_v20250321_1942
+email_extractor_v20250322_1915
