@@ -1,65 +1,56 @@
+# scheduler.py
 import logging
+from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 from backend.workflow_pipeline.database import SessionLocal, TokenStore
 from backend.workflow_pipeline.emails import get_gmail_service, fetch_and_classify_emails
 from backend.workflow_pipeline.logic import insert_job_applications
-from fastapi import APIRouter, Depends, HTTPException
 from backend.workflow_pipeline.session import get_current_user
+from .celery_app import app  # ✅ From separate file
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-def process_user_emails(user_email: str):
-    """
-    Process emails for a single user.
-    """
+# ------ Celery Tasks (Synchronous) ------
+@app.task
+def process_user_emails_task(user_email: str):
+    import asyncio
+    asyncio.run(async_process_user_emails(user_email))
+
+# ------ Async Processing Logic ------
+async def async_process_user_emails(user_email: str):
     db = SessionLocal()
     try:
-        service = get_gmail_service(user_email)
-        confirmations, rejections = fetch_and_classify_emails(service)
-
-        processed_count, skipped_count = insert_job_applications(db, confirmations, user_email)
-        logger.info(f"✅ User {user_email}: Processed {processed_count} applications, skipped {skipped_count}.")
-        
-    except Exception as e:
-        logger.error(f"❌ Error processing emails for {user_email}: {e}")
+        service = await get_gmail_service(user_email)
+        confirmations, _ = await fetch_and_classify_emails(service)
+        await insert_job_applications(db, confirmations, user_email)
     finally:
-        db.close()
+        await db.close()
 
-def scheduled_email_fetch():
-    """
-    Processes emails for all users. This function will be triggered externally by cron-job.org.
-    """
-    logger.info("⏳ Running scheduled email fetch job...")
+# ------ Scheduled Job ------
+async def scheduled_email_fetch():
     db = SessionLocal()
-    
-    users = db.query(TokenStore).all()
-    for user in users:
-        process_user_emails(user.user_id)
-
-    db.close()
-    logger.info("✅ Scheduled email fetch completed.")
-
-@router.get("/trigger-email-fetch")
-def trigger_email_fetch():
-    """
-    Public endpoint that cron-job.org will call to trigger the email fetch job.
-    """
     try:
-        scheduled_email_fetch()
-        return {"message": "Email fetch triggered successfully."}
+        result = await db.execute(select(TokenStore.user_id))
+        for user in result.scalars().all():
+            process_user_emails_task.delay(user)  # Enqueue Celery task
+    finally:
+        await db.close()
+
+# ------ Endpoints ------
+@router.get("/trigger-email-fetch")
+async def trigger_email_fetch():
+    try:
+        await scheduled_email_fetch()
+        return {"message": "Email fetch triggered."}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(500, detail=str(e))
 
 @router.get("/my-email-fetch")
-def my_email_fetch(current_user: str = Depends(get_current_user)):
-    """
-    JWT-protected endpoint for the logged-in user to fetch and process their own emails manually.
-    """
+async def my_email_fetch(current_user: str = Depends(get_current_user)):
     try:
-        results = process_user_emails(current_user)
-        return {
-            "message": f"Processed emails for {current_user}.",
-            "details": results
-        }
+        await async_process_user_emails(current_user)
+        return {"message": f"Processed emails for {current_user}."}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(500, detail=str(e))

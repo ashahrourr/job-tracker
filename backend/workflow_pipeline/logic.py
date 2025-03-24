@@ -1,58 +1,57 @@
+# logic.py (updated)
 import spacy
-from backend.workflow_pipeline.database import JobApplication
+from sqlalchemy import select, insert
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from backend.workflow_pipeline.database import JobApplication, AsyncSession
 import os
+from typing import List, Dict
 
-# Specify the directory of your saved spaCy NER model.
-# (If you are versioning your model directories, update this path accordingly.)
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "job_extractor_model_v1741654429") 
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "job_extractor_model_v1741654429")
 
-def insert_job_applications(db, confirmations, user_email: str):
+# ✅ Load spaCy model ONCE at startup
+try:
+    nlp = spacy.load(MODEL_PATH)
+except Exception as e:
+    raise RuntimeError(f"Failed to load spaCy model: {str(e)}")
+
+async def insert_job_applications(db: AsyncSession, confirmations: List[Dict], user_email: str) -> tuple[int, int]:
     """
-    Load the spaCy NER model, parse each confirmation email to extract the COMPANY and POSITION,
-    and insert new job applications into the database for the given user.
-    
-    Duplicates are skipped if a record with the same company and position already exists.
+    Async version with batch processing and PostgreSQL upsert.
+    Returns: (processed_count, skipped_count)
     """
-    try:
-        nlp = spacy.load(MODEL_PATH)
-    except Exception as e:
-        raise RuntimeError(f"Failed to load spaCy model: {str(e)}")
-    
-    processed_count = 0
-    skipped_count = 0
+    processed = 0
+    skipped = 0
+    batch = []
 
     for email in confirmations:
         text = email.get("body", "")
-        doc = nlp(text)
-        company = None
-        job_title = None
+        doc = nlp(text)  # ✅ Reuse preloaded model
         
-        for ent in doc.ents:
-            if ent.label_ == "COMPANY" and not company:
-                company = ent.text
-            elif ent.label_ == "POSITION" and not job_title:
-                job_title = ent.text
+        company = next((ent.text for ent in doc.ents if ent.label_ == "COMPANY"), None)
+        job_title = next((ent.text for ent in doc.ents if ent.label_ == "POSITION"), None) or "Unknown Position"
 
-        # Only proceed if a company was detected
-        if company:
-            effective_title = job_title if job_title else "Unknown Position"
-            # Check for duplicates for the specific user
-            duplicate = db.query(JobApplication).filter(
-                JobApplication.user_email == user_email,
-                JobApplication.company == company,
-                JobApplication.job_title == effective_title
-            ).first()
+        if not company:
+            skipped += 1
+            continue
 
-            if duplicate:
-                skipped_count += 1
-                continue
+        batch.append({
+            "user_email": user_email,
+            "company": company,
+            "job_title": job_title
+        })
 
-            # Insert new job application record
-            new_job = JobApplication(user_email=user_email, company=company, job_title=effective_title)
-            db.add(new_job)
-            processed_count += 1
-        else:
-            skipped_count += 1
+    if not batch:
+        return 0, skipped
 
-    db.commit()
-    return processed_count, skipped_count
+    # ✅ Bulk insert with conflict skipping (PostgreSQL specific)
+    stmt = pg_insert(JobApplication.__table__).values(batch).on_conflict_do_nothing(
+        index_elements=["user_email", "company", "job_title"]
+    )
+    
+    result = await db.execute(stmt)
+    await db.commit()
+    
+    processed = result.rowcount  # Number of inserted rows
+    skipped += len(batch) - processed  # Conflicts + no-company entries
+    
+    return processed, skipped

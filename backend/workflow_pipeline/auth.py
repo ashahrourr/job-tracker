@@ -1,100 +1,107 @@
-# auth.py (modified callback endpoint)
+# auth.py
 import os
 import json
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import RedirectResponse
 from google_auth_oauthlib.flow import Flow
 from starlette.requests import Request
-from backend.workflow_pipeline.database import SessionLocal, TokenStore
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from backend.workflow_pipeline.database import async_session, TokenStore
+from backend.workflow_pipeline.session import create_access_token
 from dotenv import load_dotenv
 
-# Import the JWT functions
-from backend.workflow_pipeline.session import create_access_token
-
 load_dotenv()
+router = APIRouter()
+
+# ========== GOOGLE AUTH SETUP ==========
 GOOGLE_CREDENTIALS_JSON = os.getenv("GOOGLE_CREDENTIALS_JSON")
 if not GOOGLE_CREDENTIALS_JSON:
-    raise Exception("Missing Google credentials. Set GOOGLE_CREDENTIALS_JSON in Render or .env")
-credentials_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
+    raise RuntimeError("Missing Google credentials in environment")
 
-# Updated scopes to include email and openid for user info
 flow = Flow.from_client_config(
-    credentials_dict,
-    scopes=["openid", "https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/userinfo.email"],
+    client_config=json.loads(GOOGLE_CREDENTIALS_JSON),
+    scopes=["openid", "https://www.googleapis.com/auth/gmail.readonly", 
+            "https://www.googleapis.com/auth/userinfo.email"],
     redirect_uri=os.getenv("REDIRECT_URI")
 )
 
-
-router = APIRouter()
-
-def save_token_to_db(credentials, user_email: str):
-    # [Token saving logic updated for multiuser, as shown previously]
-    db = SessionLocal()
-    token_entry = db.query(TokenStore).filter(TokenStore.user_id == user_email).first()
-
-    if token_entry:
-        token_entry.token = credentials.token
-        token_entry.refresh_token = credentials.refresh_token
-        token_entry.token_uri = credentials.token_uri
-        token_entry.client_id = credentials.client_id
-        token_entry.client_secret = credentials.client_secret
-        token_entry.scopes = ",".join(credentials.scopes)
-    else:
-        db_token = TokenStore(
-            user_id=user_email,
-            token=credentials.token,
-            refresh_token=credentials.refresh_token,
-            token_uri=credentials.token_uri,
-            client_id=credentials.client_id,
-            client_secret=credentials.client_secret,
-            scopes=",".join(credentials.scopes),
+# ========== ASYNC DATABASE OPERATIONS ==========
+async def save_token_to_db(credentials, user_email: str):
+    """Async version of token saving with proper session handling"""
+    async with async_session() as db:
+        # Check for existing token
+        result = await db.execute(
+            select(TokenStore).where(TokenStore.user_id == user_email)
         )
-        db.add(db_token)
+        token_entry = result.scalar_one_or_none()
 
-    db.commit()
-    db.close()
+        if token_entry:
+            # Update existing entry
+            token_entry.token = credentials.token
+            token_entry.refresh_token = credentials.refresh_token
+            token_entry.token_uri = credentials.token_uri
+            token_entry.client_id = credentials.client_id
+            token_entry.client_secret = credentials.client_secret
+            token_entry.scopes = ",".join(credentials.scopes)
+        else:
+            # Create new entry
+            db.add(TokenStore(
+                user_id=user_email,
+                token=credentials.token,
+                refresh_token=credentials.refresh_token,
+                token_uri=credentials.token_uri,
+                client_id=credentials.client_id,
+                client_secret=credentials.client_secret,
+                scopes=",".join(credentials.scopes),
+                )
+            )
 
-from fastapi.responses import RedirectResponse
+        await db.commit()
 
+# ========== ROUTES ==========
 @router.get("/auth/callback")
 async def callback(request: Request):
+    """Async OAuth callback handler"""
     try:
         code = request.query_params.get("code")
         if not code:
-            raise HTTPException(status_code=400, detail="Authorization code missing")
-        
+            raise HTTPException(400, "Missing authorization code")
+
+        # Exchange code for credentials
         flow.fetch_token(code=code)
         credentials = flow.credentials
 
-        # Extract user's email using the ID token
+        # Verify ID token
         from google.oauth2 import id_token
         from google.auth.transport import requests as google_requests
         id_info = id_token.verify_oauth2_token(
-            credentials.id_token, google_requests.Request(), credentials.client_id
+            credentials.id_token,
+            google_requests.Request(),
+            credentials.client_id
         )
-        user_email = id_info.get("email")
-        if not user_email:
-            raise HTTPException(status_code=400, detail="Failed to retrieve user email from token")
 
-        # Save user token to DB
-        save_token_to_db(credentials, user_email)
+        if not (user_email := id_info.get("email")):
+            raise HTTPException(400, "Failed to get user email from token")
 
-        # Create JWT token for session management
+        # Save credentials async
+        await save_token_to_db(credentials, user_email)
+
+        # Create and return JWT
         jwt_token = create_access_token(data={"sub": user_email})
-
-        # ✅ Redirect to frontend with token in the URL
-        FRONTEND_URL = os.getenv("FRONTEND_URL")  # Change this if frontend URL is different
-        return RedirectResponse(f"{FRONTEND_URL}?token={jwt_token}")
+        return RedirectResponse(
+            url=f"{os.getenv('FRONTEND_URL')}?token={jwt_token}"
+        )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+        raise HTTPException(500, "Authentication failed") from e
 
 @router.get("/auth/login")
 async def login():
+    """Initiate OAuth flow"""
     auth_url, _ = flow.authorization_url(
-        prompt="consent",  # 🟢 Forces Google to re-ask permissions with new scopes
-        access_type="offline",  # Optional: for refresh token support
-        include_granted_scopes="true"  # Optional: merges scopes instead of replacing
+        prompt="consent",
+        access_type="offline",
+        include_granted_scopes="true"
     )
     return RedirectResponse(auth_url)
