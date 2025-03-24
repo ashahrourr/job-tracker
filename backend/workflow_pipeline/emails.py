@@ -266,7 +266,7 @@ def fetch_and_classify_emails(service):
     classify them (confirmation/unrelated),
     and if 'confirmation' => run the EntityExtractor to get company + position.
     """
-    query = "newer_than:2d"  # Adjust as needed
+    query = "newer_than:24h"  # Adjust as needed
     try:
         response = service.users().messages().list(
             userId="me", 

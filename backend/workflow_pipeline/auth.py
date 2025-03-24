@@ -92,5 +92,9 @@ async def callback(request: Request):
 
 @router.get("/auth/login")
 async def login():
-    auth_url, _ = flow.authorization_url(prompt="consent")
+    auth_url, _ = flow.authorization_url(
+        prompt="consent",  # 🟢 Forces Google to re-ask permissions with new scopes
+        access_type="offline",  # Optional: for refresh token support
+        include_granted_scopes="true"  # Optional: merges scopes instead of replacing
+    )
     return RedirectResponse(auth_url)

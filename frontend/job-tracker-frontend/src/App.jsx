@@ -35,6 +35,19 @@ function App() {
     setJobs([]);
   };
 
+  const handleDelete = async (jobId) => {
+    try {
+      await axios.delete(`${API_URL}/jobs/${jobId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      // Remove the deleted job from the state
+      setJobs(jobs.filter(job => job.id !== jobId));
+    } catch (error) {
+      console.error("Error deleting job:", error);
+      // You might want to add error handling here
+    }
+  };
+
   // ✅ Fetch Job Applications for the Logged-in User
   useEffect(() => {
     if (token) {
@@ -110,8 +123,18 @@ function App() {
             jobs.map((job) => (
               <div 
                 key={job.id}
-                className="bg-gray-800/50 rounded-xl p-4 border border-gray-700 hover:border-purple-500 transition-all"
+                className="relative group bg-gray-800/50 rounded-xl p-4 border border-gray-700 hover:border-purple-500 transition-all"
               >
+                {/* Delete Button - Hidden by default, shows on hover */}
+                <button
+                  onClick={() => handleDelete(job.id)}
+                  className="absolute -top-1.5 -right-1.5 bg-red-500/90 opacity-0 group-hover:opacity-100 text-white rounded-md w-5 h-5 flex items-center justify-center transition-all duration-200 shadow-lg hover:bg-red-600 text-xs"
+                  title="Delete this entry"
+                >
+                  <span className="relative top-[-0.5px]">×</span>
+                </button>
+
+                {/* Rest of the card remains EXACTLY the same */}
                 <div className="flex justify-between items-start mb-4">
                   <h3 className="text-lg font-semibold text-purple-400">{job.company}</h3>
                   <span className="text-sm text-gray-400">

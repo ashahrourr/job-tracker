@@ -1,14 +1,23 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException
-from sqlalchemy.orm import Session
-from backend.workflow_pipeline.database import SessionLocal, JobApplication
+from sqlalchemy.ext.asyncio import AsyncSession
+from backend.workflow_pipeline.database import SessionLocal, JobApplication, init_models
 from fastapi.middleware.cors import CORSMiddleware
 from backend.workflow_pipeline.auth import router as auth_router
 from backend.workflow_pipeline.emails import router as gmail_router
 from backend.workflow_pipeline.scheduler import router as scheduler_router
 from backend.workflow_pipeline.session import get_current_user
 import uvicorn
+from sqlalchemy import select
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Initialize database on startup
+    await init_models()
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 # Include the auth, Gmail, and scheduler routes
 app.include_router(auth_router)
@@ -27,25 +36,42 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
-# Dependency to get DB session
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# Async database dependency
+async def get_db() -> AsyncSession:
+    async with SessionLocal() as session:
+        yield session
 
-# Root endpoint (for testing)
-@app.get("/")
-def read_root():
-    return {"message": "Job Tracker API is running on Fly.io!"}
-
-# Get all job applications (for now, open to all; consider securing it later)
+# Updated endpoints
 @app.get("/jobs/")
-def get_jobs(db: Session = Depends(get_db)):
-    jobs = db.query(JobApplication).all()
+async def get_user_jobs(
+    current_user: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
+        select(JobApplication).where(JobApplication.user_email == current_user)
+    )
+    jobs = result.scalars().all()
     return jobs
 
-# Ensure the app listens on 0.0.0.0:8000 for Fly.io
+@app.delete("/jobs/{job_id}")
+async def delete_job(
+    job_id: int,
+    current_user: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
+        select(JobApplication)
+        .where(JobApplication.id == job_id)
+        .where(JobApplication.user_email == current_user)
+    )
+    job = result.scalar_one_or_none()
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    await db.delete(job)
+    await db.commit()
+    return {"message": "Job deleted successfully"}
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
