@@ -29,6 +29,8 @@ SessionLocal = sessionmaker(
     autoflush=False
 )
 
+async_session = SessionLocal
+
 Base = declarative_base()
 
 class JobApplication(Base):

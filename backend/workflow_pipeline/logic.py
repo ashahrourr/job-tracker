@@ -1,49 +1,30 @@
-# logic.py (updated)
-import spacy
-from sqlalchemy import select, insert
+# logic.py
+from sqlalchemy import insert
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from backend.workflow_pipeline.database import JobApplication, AsyncSession
-import os
 from typing import List, Dict
 
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "job_extractor_model_v1741654429")
-
-# ✅ Load spaCy model ONCE at startup
-try:
-    nlp = spacy.load(MODEL_PATH)
-except Exception as e:
-    raise RuntimeError(f"Failed to load spaCy model: {str(e)}")
-
-async def insert_job_applications(db: AsyncSession, confirmations: List[Dict], user_email: str) -> tuple[int, int]:
+async def insert_job_applications(
+    db: AsyncSession, 
+    applications: List[Dict[str, str]],
+    user_email: str
+) -> tuple[int, int]:
     """
-    Async version with batch processing and PostgreSQL upsert.
-    Returns: (processed_count, skipped_count)
+    Pure database operation - expects pre-processed data
+    Args:
+        applications: List of dicts with 'company' and 'position' keys
     """
-    processed = 0
-    skipped = 0
-    batch = []
+    if not applications:
+        return 0, 0
 
-    for email in confirmations:
-        text = email.get("body", "")
-        doc = nlp(text)  # ✅ Reuse preloaded model
-        
-        company = next((ent.text for ent in doc.ents if ent.label_ == "COMPANY"), None)
-        job_title = next((ent.text for ent in doc.ents if ent.label_ == "POSITION"), None) or "Unknown Position"
+    batch = [{
+        "user_email": user_email,
+        "company": app["company"],
+        # Changed from "position" to "job_title"
+        "job_title": app["job_title"] or "Unknown Position"  # 🚨 CORRECTION
+    } for app in applications]
 
-        if not company:
-            skipped += 1
-            continue
-
-        batch.append({
-            "user_email": user_email,
-            "company": company,
-            "job_title": job_title
-        })
-
-    if not batch:
-        return 0, skipped
-
-    # ✅ Bulk insert with conflict skipping (PostgreSQL specific)
+    # Upsert logic
     stmt = pg_insert(JobApplication.__table__).values(batch).on_conflict_do_nothing(
         index_elements=["user_email", "company", "job_title"]
     )
@@ -51,7 +32,7 @@ async def insert_job_applications(db: AsyncSession, confirmations: List[Dict], u
     result = await db.execute(stmt)
     await db.commit()
     
-    processed = result.rowcount  # Number of inserted rows
-    skipped += len(batch) - processed  # Conflicts + no-company entries
+    processed = result.rowcount
+    skipped = len(batch) - processed
     
     return processed, skipped

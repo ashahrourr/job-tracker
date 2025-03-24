@@ -20,13 +20,14 @@ def process_user_emails_task(user_email: str):
 
 # ------ Async Processing Logic ------
 async def async_process_user_emails(user_email: str):
-    db = SessionLocal()
-    try:
-        service = await get_gmail_service(user_email)
-        confirmations, _ = await fetch_and_classify_emails(service)
-        await insert_job_applications(db, confirmations, user_email)
-    finally:
-        await db.close()
+    async with SessionLocal() as db:  # ✅ Use async context manager
+        try:
+            service = await get_gmail_service(user_email)
+            confirmations = await fetch_and_classify_emails(service)
+            processed, skipped = await insert_job_applications(db, confirmations, user_email)
+            logger.info(f"Processed {processed} apps for {user_email}")
+        finally:
+            await db.close()
 
 # ------ Scheduled Job ------
 async def scheduled_email_fetch():

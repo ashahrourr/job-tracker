@@ -191,9 +191,11 @@ async def fetch_and_classify_emails(service: Resource) -> List[Dict]:
         logger.error(f"Gmail API error: {e}")
         return []
 
-    return await asyncio.gather(*[
+    # Process all emails and filter out None values
+    results = await asyncio.gather(*[
         _process_email(service, msg['id']) for msg in messages
     ])
+    return [res for res in results if res]
 
 async def _process_email(service: Resource, msg_id: str) -> Optional[Dict]:
     """Process individual email with error handling"""
@@ -222,13 +224,16 @@ async def _process_email(service: Resource, msg_id: str) -> Optional[Dict]:
             ),
         )
 
-        if prediction == "confirmation":
+        if prediction == "confirmation" and entities["companies"]:
+            # Return only the data structure needed for database insertion
             return {
-                "subject": subject,
-                "company": entities["companies"][0] if entities["companies"] else None,
-                "position": entities["positions"][0] if entities["positions"] else None
+                "company": entities["companies"][0],
+                "job_title": entities["positions"][0] if entities["positions"] else "Unknown Position"
             }
+        
+        logger.debug(f"Skipped email: {subject}")
         return None
+        
     except Exception as e:
         logger.error(f"Error processing email: {e}")
         return None
