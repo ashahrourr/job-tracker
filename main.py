@@ -41,6 +41,10 @@ app.add_middleware(
 async def get_db() -> AsyncSession:
     async with SessionLocal() as session:
         yield session
+        
+@app.get("/")
+def root():
+    return {"message": "Job Tracker Backend is Live 🚀"}
 
 # Updated endpoints
 @app.get("/jobs/")
