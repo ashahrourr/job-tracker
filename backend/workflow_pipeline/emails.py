@@ -1,10 +1,11 @@
-# emails.py
+# emails.py (Final Version)
 import json
 import base64
 import os
 import re
 import asyncio
 import datetime
+import requests
 from html import unescape
 from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor
@@ -14,13 +15,6 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build, Resource
 from google.auth.transport.requests import Request
 from bs4 import BeautifulSoup
-import torch
-from transformers import (
-    BertForSequenceClassification, 
-    BertTokenizerFast,
-    AutoModelForTokenClassification,
-    AutoTokenizer
-)
 import logging
 
 from sqlalchemy import select
@@ -28,13 +22,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.workflow_pipeline.database import async_session, TokenStore
 from backend.workflow_pipeline.auth import save_token_to_db
 from fastapi import APIRouter
+from dotenv import load_dotenv
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # ========== GLOBAL CONFIG ==========
-CLASSIFIER_MODEL_ID = "ashahrour/email-classifier"
-EXTRACTOR_MODEL_ID = "ashahrour/email-extractor"
+CLASSIFIER_API_URL = "https://api-inference.huggingface.co/models/ashahrour/email-classifier"
+EXTRACTOR_API_URL = "https://api-inference.huggingface.co/models/ashahrour/email-extractor"
+API_HEADERS = {"Authorization": f"Bearer {os.getenv('HF_API_TOKEN')}"}
 CLEANING_CONFIG = {
     "truncate_length": 1000,
     "clean_patterns": [
@@ -53,76 +50,8 @@ REJECTION_PATTERNS = re.compile(
     flags=re.IGNORECASE
 )
 
-# ========== PRELOAD MODELS ==========
-logger.info("Loading ML models...")
-CLASSIFIER_MODEL = BertForSequenceClassification.from_pretrained(CLASSIFIER_MODEL_ID)
-CLASSIFIER_MODEL.eval()
-TOKENIZER = BertTokenizerFast.from_pretrained(CLASSIFIER_MODEL_ID)
-
-# Thread pool for CPU-intensive tasks
+# Thread pool for API calls
 executor = ThreadPoolExecutor(max_workers=4)
-
-# ========== ENTITY EXTRACTOR CLASS ==========
-class EntityExtractor:
-    """NER model for extracting companies and positions from text"""
-    def __init__(self, model_name: str):
-        self.device = torch.device("cpu")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForTokenClassification.from_pretrained(model_name)
-        self.model.eval()
-        self.model.to(self.device)
-        self.id2label = self.model.config.id2label
-
-    def predict(self, text: str, max_length: int = 256) -> dict:
-        inputs = self.tokenizer(
-            text, return_tensors="pt", truncation=True,
-            max_length=max_length, return_offsets_mapping=True
-        )
-        offset_mapping = inputs.pop("offset_mapping")[0].numpy()
-        inputs = inputs.to(self.device)
-
-        with torch.no_grad():
-            outputs = self.model(**inputs)
-            
-        preds = torch.argmax(outputs.logits, dim=-1)[0].cpu().numpy()
-        return {
-            "companies": self._extract_entities(text, offset_mapping, preds, "COMPANY"),
-            "positions": self._extract_entities(text, offset_mapping, preds, "POSITION")
-        }
-
-    def _extract_entities(self, text: str, offsets: list, preds: list, entity_type: str) -> list:
-        entities = []
-        current_entity = []
-        current_offsets = []
-
-        for pred, (start, end) in zip(preds, offsets):
-            if start == end:
-                continue  # Skip special tokens
-
-            label = self.id2label[pred]
-            if label == f"B-{entity_type}":
-                if current_entity:
-                    entities.append(self._get_text(text, current_offsets))
-                current_entity = [text[start:end]]
-                current_offsets = [(start, end)]
-            elif label == f"I-{entity_type}" and current_entity:
-                current_entity.append(text[start:end])
-                current_offsets.append((start, end))
-            elif current_entity:
-                entities.append(self._get_text(text, current_offsets))
-                current_entity = []
-                current_offsets = []
-
-        if current_entity:
-            entities.append(self._get_text(text, current_offsets))
-        return entities
-
-    @staticmethod
-    def _get_text(text: str, offsets: list) -> str:
-        return text[offsets[0][0]:offsets[-1][1]]
-
-# Initialize extractor once
-EXTRACTOR = EntityExtractor(EXTRACTOR_MODEL_ID)
 
 # ========== CORE FUNCTIONALITY ==========
 async def get_gmail_service(user_email: str) -> Resource:
@@ -191,7 +120,6 @@ async def fetch_and_classify_emails(service: Resource) -> List[Dict]:
         logger.error(f"Gmail API error: {e}")
         return []
 
-    # Process all emails and filter out None values
     results = await asyncio.gather(*[
         _process_email(service, msg['id']) for msg in messages
     ])
@@ -214,18 +142,17 @@ async def _process_email(service: Resource, msg_id: str) -> Optional[Dict]:
         if is_rejection(subject, body):
             return None
 
-        # Parallel processing of heavy ML tasks
+        # Parallel API calls with error handling
         prediction, entities = await asyncio.gather(
             asyncio.get_event_loop().run_in_executor(
                 executor, lambda: _classify_email(f"{subject} {body}")
             ),
             asyncio.get_event_loop().run_in_executor(
-                executor, lambda: EXTRACTOR.predict(f"{subject} {body}")
+                executor, lambda: _call_extractor_api(f"{subject} {body}")
             ),
         )
 
         if prediction == "confirmation" and entities["companies"]:
-            # Return only the data structure needed for database insertion
             return {
                 "company": entities["companies"][0],
                 "job_title": entities["positions"][0] if entities["positions"] else "Unknown Position"
@@ -239,14 +166,57 @@ async def _process_email(service: Resource, msg_id: str) -> Optional[Dict]:
         return None
 
 def _classify_email(text: str) -> str:
-    """Classify email text using pre-loaded model"""
-    inputs = TOKENIZER(
-        text, truncation=True, padding="max_length",
-        max_length=512, return_tensors="pt"
-    )
-    with torch.no_grad():
-        outputs = CLASSIFIER_MODEL(**inputs)
-    return "confirmation" if outputs.logits.argmax() == 1 else "unrelated"
+    """Classify email text using Hugging Face API"""
+    truncated_text = text[:CLEANING_CONFIG["truncate_length"]]
+    try:
+        response = requests.post(
+            CLASSIFIER_API_URL,
+            headers=API_HEADERS,
+            json={"inputs": truncated_text},
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            if isinstance(result, list):
+                top_pred = max(result[0], key=lambda x: x['score'])
+                return "confirmation" if top_pred['label'] == 'LABEL_1' else "unrelated"
+            
+        logger.error(f"Classifier API error: {response.status_code} - {response.text}")
+        return "unrelated"
+        
+    except Exception as e:
+        logger.error(f"Classifier API exception: {e}")
+        return "unrelated"
+
+def _call_extractor_api(text: str) -> dict:
+    """Extract entities using Hugging Face API"""
+    truncated_text = text[:CLEANING_CONFIG["truncate_length"]]
+    try:
+        response = requests.post(
+            EXTRACTOR_API_URL,
+            headers=API_HEADERS,
+            json={"inputs": truncated_text},
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            entities = response.json()
+            companies = []
+            positions = []
+            for entity in entities:
+                if entity.get('entity_group') == 'COMPANY':
+                    companies.append(entity.get('word', ''))
+                elif entity.get('entity_group') == 'POSITION':
+                    positions.append(entity.get('word', ''))
+            return {"companies": companies, "positions": positions}
+            
+        logger.error(f"Extractor API error: {response.status_code} - {response.text}")
+        return {"companies": [], "positions": []}
+        
+    except Exception as e:
+        logger.error(f"Extractor API exception: {e}")
+        return {"companies": [], "positions": []}
 
 def is_rejection(subject: str, body: str) -> bool:
     """Check if email is a rejection using regex patterns"""
