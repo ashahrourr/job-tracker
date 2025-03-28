@@ -1,5 +1,5 @@
 # database.py
-from sqlalchemy import create_engine, Column, String, Integer, DateTime, Index
+from sqlalchemy import create_engine, Column, String, Integer, DateTime, Index, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
@@ -35,20 +35,15 @@ Base = declarative_base()
 
 class JobApplication(Base):
     __tablename__ = "job_applications"
+    
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_email = Column(String, nullable=False)
     company = Column(String, nullable=False)
     job_title = Column(String, nullable=False)
     applied_date = Column(DateTime, default=datetime.datetime.utcnow)
-        # Add this index
+
     __table_args__ = (
-        Index(
-            "idx_job_application_user_company_job",
-            "user_email", 
-            "company", 
-            "job_title",
-            unique=False  # Not unique to allow same job from different sources
-        ),
+        UniqueConstraint("user_email", "company", "job_title", name="uix_user_company_job"),
     )
 
 class TokenStore(Base):
