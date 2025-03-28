@@ -62,17 +62,14 @@ async def save_token_to_db(credentials, user_email: str):
 # ========== ROUTES ==========
 @router.get("/auth/callback")
 async def callback(request: Request):
-    """Async OAuth callback handler"""
     try:
         code = request.query_params.get("code")
         if not code:
             raise HTTPException(400, "Missing authorization code")
 
-        # Exchange code for credentials
         flow.fetch_token(code=code)
         credentials = flow.credentials
 
-        # Verify ID token
         from google.oauth2 import id_token
         from google.auth.transport import requests as google_requests
         id_info = id_token.verify_oauth2_token(
@@ -81,20 +78,19 @@ async def callback(request: Request):
             credentials.client_id
         )
 
-        if not (user_email := id_info.get("email")):
-            raise HTTPException(400, "Failed to get user email from token")
+        user_email = id_info.get("email")
+        if not user_email:
+            raise HTTPException(400, "Failed to retrieve user email from token")
 
-        # Save credentials async
         await save_token_to_db(credentials, user_email)
 
-        # Create and return JWT
         jwt_token = create_access_token(data={"sub": user_email})
-        return RedirectResponse(
-            url=f"{os.getenv('FRONTEND_URL')}?token={jwt_token}"
-        )
+        return RedirectResponse(f"{os.getenv('FRONTEND_URL')}?token={jwt_token}")
 
     except Exception as e:
-        raise HTTPException(500, "Authentication failed") from e
+        import traceback
+        traceback.print_exc()  # 🐛 Show the full stack trace in the logs
+        raise HTTPException(500, detail=f"Authentication failed: {str(e)}")
 
 @router.get("/auth/login")
 async def login():

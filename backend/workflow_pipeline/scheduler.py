@@ -1,5 +1,5 @@
-# scheduler.py
 import logging
+import asyncio
 from sqlalchemy import select
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,7 +11,6 @@ from backend.workflow_pipeline.session import get_current_user
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-
 # ------ Async Processing Logic ------
 async def async_process_user_emails(user_email: str):
     async with SessionLocal() as db:
@@ -20,30 +19,35 @@ async def async_process_user_emails(user_email: str):
             if not service:
                 logger.error(f"No Gmail service for {user_email}")
                 return
-                
-            # Add timeout and retry config
+
             confirmations = await fetch_and_classify_emails(service)
-
             processed, skipped = await insert_job_applications(db, confirmations, user_email)
-            logger.info(f"Processed {processed} apps for {user_email}")
+            logger.info(f"✅ Processed {processed} applications for {user_email}")
         except Exception as e:
-            logger.error(f"Critical error for {user_email}: {str(e)}", exc_info=True)
-            raise  # Re-raise for Celery retry
+            logger.error(f"❌ Error processing {user_email}: {str(e)}", exc_info=True)
 
-# ------ Scheduled Job ------
-async def scheduled_email_fetch():
+# ------ Concurrent Scheduler ------
+async def scheduled_email_fetch(max_concurrent_users: int = 5):
     async with SessionLocal() as db:
         result = await db.execute(select(TokenStore.user_id))
-        for user in result.scalars().all():
-           await async_process_user_emails(user)
+        users = result.scalars().all()
 
+    semaphore = asyncio.Semaphore(max_concurrent_users)
+
+    async def limited_worker(user_email: str):
+        async with semaphore:
+            await async_process_user_emails(user_email)
+
+    logger.info(f"🚀 Starting email fetch for {len(users)} users...")
+    await asyncio.gather(*[limited_worker(u) for u in users])
+    logger.info(f"✅ Email fetch complete.")
 
 # ------ Endpoints ------
 @router.get("/trigger-email-fetch")
 async def trigger_email_fetch():
     try:
-        await scheduled_email_fetch()
-        return {"message": "Email fetch triggered."}
+        asyncio.create_task(scheduled_email_fetch())
+        return {"message": "Email fetch started in background."}
     except Exception as e:
         raise HTTPException(500, detail=str(e))
 
