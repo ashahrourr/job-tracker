@@ -38,30 +38,34 @@ function App() {
   // ========== 2) scheduleTokenRefresh: decode and set a timeout 5 min early ==========
   const scheduleTokenRefresh = (tokenStr) => {
     try {
-      const decoded = jwtDecode(tokenStr);
-      const expiresAt = decoded.exp * 1000; // convert seconds to ms
-      const now = Date.now();
-      const timeout = expiresAt - now - 300_000; // 5-minute buffer
+        const decoded = jwtDecode(tokenStr);
+        if (!decoded.exp) {
+            // Token has no expiration, no need to schedule refresh
+            return;
+        }
+        const expiresAt = decoded.exp * 1000; // convert seconds to ms
+        const now = Date.now();
+        const timeout = expiresAt - now - 300_000; // 5-minute buffer
 
-      if (timeout > 0) {
-        setTimeout(async () => {
-          try {
-            const newToken = await refreshToken();
-            localStorage.setItem("jwt", newToken);
-            setToken(newToken);
-            scheduleTokenRefresh(newToken); // Schedule again for the next expiry
-          } catch (err) {
-            console.error("Refresh failed:", err);
-            localStorage.removeItem("jwt");
-            setToken(null);
-            window.location.href = `${API_URL}/auth/login`;
-          }
-        }, timeout);
-      }
+        if (timeout > 0) {
+            setTimeout(async () => {
+                try {
+                    const newToken = await refreshToken();
+                    localStorage.setItem("jwt", newToken);
+                    setToken(newToken);
+                    scheduleTokenRefresh(newToken); // Schedule again if new token has expiration
+                } catch (err) {
+                    console.error("Refresh failed:", err);
+                    localStorage.removeItem("jwt");
+                    setToken(null);
+                    window.location.href = `${API_URL}/auth/login`;
+                }
+            }, timeout);
+        }
     } catch (err) {
-      console.error("Token decode failed:", err);
+        console.error("Token decode failed:", err);
     }
-  };
+};
 
   // ========== 3) Setup Axios Interceptor for fallback on 401 ==========
   const setupAxios = () => {
