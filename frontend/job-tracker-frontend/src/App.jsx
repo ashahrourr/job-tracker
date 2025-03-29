@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { jwtDecode } from 'jwt-decode';
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faBriefcase } from "@fortawesome/free-solid-svg-icons";
+import { faBriefcase, faSignOutAlt } from "@fortawesome/free-solid-svg-icons";
 
 const API_URL = import.meta.env.VITE_BACKEND_URL;
 
@@ -14,6 +14,18 @@ function App() {
   const [jobs, setJobs] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [token, setToken] = useState(localStorage.getItem("jwt") || null);
+
+    // Add filtered jobs state
+    const [filteredJobs, setFilteredJobs] = useState([]);
+
+    // Add search filtering effect
+    useEffect(() => {
+      const filtered = jobs.filter(job => 
+        job.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        job.job_title.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+      setFilteredJobs(filtered);
+    }, [searchTerm, jobs]);
 
   // ========== 1) refreshToken: post to /auth/refresh ==========
   const refreshToken = async () => {
@@ -38,34 +50,30 @@ function App() {
   // ========== 2) scheduleTokenRefresh: decode and set a timeout 5 min early ==========
   const scheduleTokenRefresh = (tokenStr) => {
     try {
-        const decoded = jwtDecode(tokenStr);
-        if (!decoded.exp) {
-            // Token has no expiration, no need to schedule refresh
-            return;
-        }
-        const expiresAt = decoded.exp * 1000; // convert seconds to ms
-        const now = Date.now();
-        const timeout = expiresAt - now - 300_000; // 5-minute buffer
+      const decoded = jwtDecode(tokenStr);
+      const expiresAt = decoded.exp * 1000; // convert seconds to ms
+      const now = Date.now();
+      const timeout = expiresAt - now - 300_000; // 5-minute buffer
 
-        if (timeout > 0) {
-            setTimeout(async () => {
-                try {
-                    const newToken = await refreshToken();
-                    localStorage.setItem("jwt", newToken);
-                    setToken(newToken);
-                    scheduleTokenRefresh(newToken); // Schedule again if new token has expiration
-                } catch (err) {
-                    console.error("Refresh failed:", err);
-                    localStorage.removeItem("jwt");
-                    setToken(null);
-                    window.location.href = `${API_URL}/auth/login`;
-                }
-            }, timeout);
-        }
+      if (timeout > 0) {
+        setTimeout(async () => {
+          try {
+            const newToken = await refreshToken();
+            localStorage.setItem("jwt", newToken);
+            setToken(newToken);
+            scheduleTokenRefresh(newToken); // Schedule again for the next expiry
+          } catch (err) {
+            console.error("Refresh failed:", err);
+            localStorage.removeItem("jwt");
+            setToken(null);
+            window.location.href = `${API_URL}/auth/login`;
+          }
+        }, timeout);
+      }
     } catch (err) {
-        console.error("Token decode failed:", err);
+      console.error("Token decode failed:", err);
     }
-};
+  };
 
   // ========== 3) Setup Axios Interceptor for fallback on 401 ==========
   const setupAxios = () => {
@@ -168,37 +176,34 @@ function App() {
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-gray-100">
       <header className="px-4 py-8 bg-gray-900/80 backdrop-blur-sm border-b border-gray-700">
         <div className="max-w-6xl mx-auto">
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent mb-8">
-            Job Application Tracker
-          </h1>
+          <div className="flex justify-between items-start mb-8">
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+              Job Application Tracker
+            </h1>
+            
+            {token ? (
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 bg-red-600/80 hover:bg-red-700/90 text-white font-semibold py-2 px-4 rounded-lg transition-all duration-200 shadow-lg hover:shadow-red-500/20"
+              >
+                <FontAwesomeIcon icon={faSignOutAlt} className="w-4 h-4" />
+                Logout
+              </button>
+            ) : (
+              <button
+                onClick={handleLogin}
+                className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-all duration-200"
+              >
+                Login with Google
+              </button>
+            )}
+          </div>
 
-          {token ? (
-            <button
-              onClick={handleLogout}
-              className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded transition-all"
-            >
-              Logout
-            </button>
-          ) : (
-            <button
-              onClick={handleLogin}
-              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-all"
-            >
-              Login with Google
-            </button>
-          )}
-
-          {/* Stats Section */}
+          {/* Simplified Stats Section */}
           <div className="flex flex-wrap gap-4 mt-4">
             <div className="flex-1 min-w-[200px] bg-gray-800/50 p-4 rounded-xl border border-gray-700">
               <div className="text-2xl font-bold text-purple-400">{jobs.length}</div>
               <div className="text-sm text-gray-400">Total Applications</div>
-            </div>
-            <div className="flex-1 min-w-[200px] bg-gray-800/50 p-4 rounded-xl border border-gray-700">
-              <div className="text-2xl font-bold text-green-400">
-                {jobs.filter((job) => job.status === "interview").length}
-              </div>
-              <div className="text-sm text-gray-400">Interviews</div>
             </div>
           </div>
         </div>
@@ -210,20 +215,20 @@ function App() {
           <input
             type="text"
             placeholder="Search jobs..."
-            className="w-full p-4 bg-gray-800/50 rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="w-full p-4 bg-gray-800/50 rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-400"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {jobs.length === 0 ? (
+          {filteredJobs.length === 0 ? (
             <div className="col-span-full text-center py-12 text-gray-400">
               <FontAwesomeIcon icon={faBriefcase} className="text-4xl mb-4" />
-              <p>No job applications found</p>
+              <p>{jobs.length === 0 ? 'No job applications found' : 'No matching results'}</p>
             </div>
           ) : (
-            jobs.map((job) => (
+            filteredJobs.map((job) => (
               <div
                 key={job.id}
                 className="relative group bg-gray-800/50 rounded-xl p-4 border border-gray-700 hover:border-purple-500 transition-all"
