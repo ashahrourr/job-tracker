@@ -1,6 +1,7 @@
 # session.py
 import os
 from datetime import datetime, timedelta
+from typing import Optional
 import jwt as pyjwt  # ✅ Correct
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -15,7 +16,7 @@ if not SECRET_KEY:
     raise Exception("SECRET_KEY is missing from the environment. Please set it in your .env file.")
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
@@ -50,3 +51,17 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token",
         )
+def get_user_email_from_token(token: str) -> Optional[str]:
+    """
+    Decode JWT without checking expiration — used for refresh endpoint
+    """
+    try:
+        payload = pyjwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM],
+            options={"verify_exp": False}  # ⚠️ Only here — don't use for auth!
+        )
+        return payload.get("sub")
+    except pyjwt.PyJWTError:
+        return None

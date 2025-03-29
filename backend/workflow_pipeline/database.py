@@ -55,7 +55,9 @@ class TokenStore(Base):
     client_id = Column(String, nullable=False)
     client_secret = Column(String, nullable=False)
     scopes = Column(String, nullable=False)
+    last_refreshed = Column(DateTime)  # Add this new column
 
 async def init_models():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        
