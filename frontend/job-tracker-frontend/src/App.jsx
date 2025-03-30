@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { jwtDecode } from 'jwt-decode';
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBriefcase, faSignOutAlt } from "@fortawesome/free-solid-svg-icons";
 
@@ -27,53 +26,6 @@ function App() {
       setFilteredJobs(filtered);
     }, [searchTerm, jobs]);
 
-  // ========== 1) refreshToken: post to /auth/refresh ==========
-  const refreshToken = async () => {
-    try {
-      const currentToken = localStorage.getItem("jwt");
-      const res = await axios.post(
-        `${API_URL}/auth/refresh`, 
-        {},  // empty POST body
-        {
-          headers: { Authorization: `Bearer ${currentToken}` },
-          timeout: 10000
-        }
-      );
-      return res.data.access_token;
-    } catch (error) {
-      if (error.code === "ECONNABORTED") return refreshToken(); // Retry on timeout
-      throw error;
-    }
-  };
-  
-
-  // ========== 2) scheduleTokenRefresh: decode and set a timeout 5 min early ==========
-  const scheduleTokenRefresh = (tokenStr) => {
-    try {
-      const decoded = jwtDecode(tokenStr);
-      const expiresAt = decoded.exp * 1000; // convert seconds to ms
-      const now = Date.now();
-      const timeout = expiresAt - now - 300_000; // 5-minute buffer
-
-      if (timeout > 0) {
-        setTimeout(async () => {
-          try {
-            const newToken = await refreshToken();
-            localStorage.setItem("jwt", newToken);
-            setToken(newToken);
-            scheduleTokenRefresh(newToken); // Schedule again for the next expiry
-          } catch (err) {
-            console.error("Refresh failed:", err);
-            localStorage.removeItem("jwt");
-            setToken(null);
-            window.location.href = `${API_URL}/auth/login`;
-          }
-        }, timeout);
-      }
-    } catch (err) {
-      console.error("Token decode failed:", err);
-    }
-  };
 
   // ========== 3) Setup Axios Interceptor for fallback on 401 ==========
   const setupAxios = () => {
@@ -83,23 +35,19 @@ function App() {
         const original = err.config;
         if (err.response?.status === 401 && !original._retry) {
           original._retry = true;
-          try {
-            const newToken = await refreshToken();
-            localStorage.setItem("jwt", newToken);
-            setToken(newToken);
-            original.headers.Authorization = `Bearer ${newToken}`;
-            return axios(original);
-          } catch (e) {
-            localStorage.removeItem("jwt");
-            setToken(null);
-            window.location.href = `${API_URL}/auth/login`;
-            return Promise.reject(e);
-          }
+  
+          // Clear token and redirect to login
+          localStorage.removeItem("jwt");
+          setToken(null);
+          window.location.href = `${API_URL}/auth/login`;
+          return Promise.reject(err);
         }
+  
         return Promise.reject(err);
       }
     );
   };
+  
 
   // ========== 4) On mount, check if we got ?token= in URL ==========
   useEffect(() => {
@@ -140,21 +88,16 @@ function App() {
   // ========== 8) Fetch jobs whenever token changes ==========
   useEffect(() => {
     setupAxios();
-
+  
     const urlParams = new URLSearchParams(window.location.search);
     const jwtFromUrl = urlParams.get("token");
-
+  
     if (jwtFromUrl) {
-      // If we just got a token from URL, schedule refresh
       localStorage.setItem("jwt", jwtFromUrl);
       setToken(jwtFromUrl);
-      scheduleTokenRefresh(jwtFromUrl);
       window.history.replaceState({}, document.title, "/");
-    } else if (token) {
-      // If we already have a token, schedule refresh
-      scheduleTokenRefresh(token);
     }
-
+  
     const fetchJobs = async () => {
       try {
         const response = await axios.get(`${API_URL}/jobs/`, {
@@ -165,11 +108,12 @@ function App() {
         console.error("Error fetching jobs:", error);
       }
     };
-
+  
     if (token) {
       fetchJobs();
     }
   }, [token]);
+  
 
   // ========== 9) Return your UI ==========
   return (

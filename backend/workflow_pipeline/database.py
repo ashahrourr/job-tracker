@@ -3,6 +3,8 @@ from sqlalchemy import create_engine, Column, String, Integer, DateTime, Index, 
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import async_scoped_session
+import asyncio
 import os
 from dotenv import load_dotenv
 import datetime
@@ -18,7 +20,8 @@ engine = create_async_engine(
     pool_size=20,        # Number of persistent connections
     max_overflow=10,     # Additional connections allowed during spikes
     pool_timeout=30,     # Max time to wait for a connection
-    pool_recycle=1800    # Recycle connections every 30 mins (prevents timeouts)
+    pool_recycle=1800,    # Recycle connections every 30 mins (prevents timeouts)
+    pool_pre_ping=True 
 )
 
 SessionLocal = sessionmaker(
@@ -29,7 +32,7 @@ SessionLocal = sessionmaker(
     autoflush=False
 )
 
-async_session = SessionLocal
+async_session = async_scoped_session(SessionLocal, scopefunc=asyncio.current_task)
 
 Base = declarative_base()
 
@@ -55,7 +58,6 @@ class TokenStore(Base):
     client_id = Column(String, nullable=False)
     client_secret = Column(String, nullable=False)
     scopes = Column(String, nullable=False)
-    last_refreshed = Column(DateTime)  # Add this new column
 
 async def init_models():
     async with engine.begin() as conn:
