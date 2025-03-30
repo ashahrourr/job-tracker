@@ -142,7 +142,12 @@ function App() {
               </button>
             )}
           </div>
-
+          
+          <div className="mt-6 bg-blue-500/10 border border-blue-400 text-blue-300 text-sm p-4 rounded-lg">
+              <p>
+                ⏱ Your job application emails are processed daily, typically after midnight. Results may appear the following morning.
+              </p>
+            </div>
           {/* Simplified Stats Section */}
           <div className="flex flex-wrap gap-4 mt-4">
             <div className="flex-1 min-w-[200px] bg-gray-800/50 p-4 rounded-xl border border-gray-700">
