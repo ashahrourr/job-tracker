@@ -122,7 +122,7 @@ function App() {
         <div className="max-w-6xl mx-auto">
           <div className="flex justify-between items-start mb-8">
             <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-              Job Application Tracker
+              Job Tracker
             </h1>
             
             {token ? (
@@ -214,6 +214,19 @@ function App() {
           )}
         </div>
       </main>
+      <footer className="mt-12 py-6 text-center border-t border-gray-700">
+        <div className="max-w-6xl mx-auto px-4">
+          <p className="text-gray-400 text-sm">
+            © 2025 Job Tracker. All rights reserved. 
+            <a 
+              href="/privacy" 
+              className="ml-1 text-purple-400 hover:text-purple-300 transition-colors"
+            >
+              Privacy Policy
+            </a>
+          </p>
+        </div>
+      </footer>
     </div>
   );
 }
